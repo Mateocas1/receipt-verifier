@@ -196,6 +196,28 @@ def _fit(text: str, font: FontType, max_width: int) -> str:
     return "…"
 
 
+def _wrap(text: str, font: FontType, max_width: int, max_lines: int = 2) -> list[str]:
+    """Wrap ``text`` to at most ``max_lines`` lines; only the overflow is ellipsized.
+
+    Row values (especially the free-text concept) must be printed in full: a label that
+    claims more text than the image holds would make every evaluation a lie.
+    """
+    remaining = text.split()
+    lines: list[str] = []
+    while remaining and len(lines) < max_lines:
+        current = remaining.pop(0)
+        while remaining:
+            candidate = f"{current} {remaining[0]}"
+            if font.getlength(candidate) > max_width:
+                break
+            current = candidate
+            remaining.pop(0)
+        lines.append(current)
+    if remaining:
+        lines[-1] = _fit(f"{lines[-1]} {' '.join(remaining)}", font, max_width)
+    return lines or [""]
+
+
 def _rows(label: ReceiptLabel) -> list[tuple[str, str]]:
     rows = [
         ("Fecha y hora", format_transferred_at(label.transferred_at)),
@@ -296,7 +318,11 @@ def _draw_amount(
 
 
 def _draw_rows(draw: ImageDraw.ImageDraw, style: IssuerStyle, label: ReceiptLabel, top: int) -> int:
-    """Draw the field rows; return the y coordinate after the last row."""
+    """Draw the field rows; return the y coordinate after the last row.
+
+    A value that needs two lines is printed on two lines: the label sidecar must never
+    claim more text than the image holds.
+    """
     width = style.width
     margin = style.margin
     content_width = width - 2 * margin
@@ -305,34 +331,75 @@ def _draw_rows(draw: ImageDraw.ImageDraw, style: IssuerStyle, label: ReceiptLabe
     y = top
     rows = _rows(label)
     for index, (name, value) in enumerate(rows):
-        value_text = _fit(value, value_font, int(content_width * 0.62))
+        value_width = content_width - 8 if style.layout == "minimal" else int(content_width * 0.62)
+        value_lines = _wrap(value, value_font, value_width)
+        extra_lines = len(value_lines) - 1
         if style.layout == "table":
             if index % 2 == 0:
-                draw.rectangle((margin - 8, y - 20, width - margin + 8, y + 20), fill=style.card_bg)
+                draw.rectangle(
+                    (margin - 8, y - 20, width - margin + 8, y + 20 + 18 * extra_lines),
+                    fill=style.card_bg,
+                )
             draw.text((margin, y), name, font=label_font, fill=style.muted, anchor="lm")
-            draw.text(
-                (width - margin, y), value_text, font=value_font, fill=style.text, anchor="rm"
-            )
+            for offset, line in enumerate(value_lines):
+                draw.text(
+                    (width - margin, y + 18 * offset),
+                    line,
+                    font=value_font,
+                    fill=style.text,
+                    anchor="rm",
+                )
             if index < len(rows) - 1:
-                draw.line((margin, y + 22, width - margin, y + 22), fill=(230, 234, 238), width=1)
+                baseline = y + 22 + 18 * extra_lines
+                draw.line(
+                    (margin, baseline, width - margin, baseline), fill=(230, 234, 238), width=1
+                )
         elif style.layout == "official":
             draw.text((margin, y), f"{name}:", font=label_font, fill=style.muted, anchor="lm")
-            draw.text((margin + 190, y), value_text, font=value_font, fill=style.text, anchor="lm")
-            draw.line((margin, y + 22, width - margin, y + 22), fill=(214, 222, 228), width=1)
+            for offset, line in enumerate(value_lines):
+                draw.text(
+                    (margin + 190, y + 18 * offset),
+                    line,
+                    font=value_font,
+                    fill=style.text,
+                    anchor="lm",
+                )
+            baseline = y + 22 + 18 * extra_lines
+            draw.line((margin, baseline, width - margin, baseline), fill=(214, 222, 228), width=1)
         elif style.layout == "minimal":
             draw.text(
                 (margin, y - 12), name.upper(), font=load_font(12), fill=style.muted, anchor="lm"
             )
-            draw.text((margin, y + 12), value_text, font=value_font, fill=style.text, anchor="lm")
-        elif style.layout == "card" or style.layout == "band":
+            for offset, line in enumerate(value_lines):
+                draw.text(
+                    (margin, y + 12 + 20 * offset),
+                    line,
+                    font=value_font,
+                    fill=style.text,
+                    anchor="lm",
+                )
+        elif style.layout in ("card", "band"):
             draw.text((margin, y), name, font=label_font, fill=style.muted, anchor="lm")
-            draw.text(
-                (width - margin, y), value_text, font=value_font, fill=style.text, anchor="rm"
-            )
+            for offset, line in enumerate(value_lines):
+                draw.text(
+                    (width - margin, y + 18 * offset),
+                    line,
+                    font=value_font,
+                    fill=style.text,
+                    anchor="rm",
+                )
         else:  # boxed
             draw.text((margin, y), name, font=label_font, fill=style.muted, anchor="lm")
-            draw.text((margin + 200, y), value_text, font=value_font, fill=style.text, anchor="lm")
+            for offset, line in enumerate(value_lines):
+                draw.text(
+                    (margin + 200, y + 18 * offset),
+                    line,
+                    font=value_font,
+                    fill=style.text,
+                    anchor="lm",
+                )
         y += style.row_gap if style.layout != "minimal" else style.row_gap + 8
+        y += 20 * extra_lines
     return y
 
 
