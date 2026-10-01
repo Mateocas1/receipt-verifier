@@ -34,7 +34,7 @@ from receipt_verifier.schema import (
     Destination,
     Issuer,
     ReceiptLabel,
-    RejectReason,
+    VerdictReason,
 )
 from receipt_verifier.validate import ValidationResult
 
@@ -64,15 +64,15 @@ class SampleOutcome(BaseModel):
     adversarial: AdversarialKind
     expected_decision: Decision
     predicted_decision: Decision
-    expected_reasons: tuple[RejectReason, ...]
-    predicted_reasons: tuple[RejectReason, ...]
+    expected_reasons: tuple[VerdictReason, ...]
+    predicted_reasons: tuple[VerdictReason, ...]
     field_matches: dict[str, bool]
     covered: bool
     latency_ms: float
     cost_usd: Decimal
 
     @property
-    def copied_reasons(self) -> tuple[RejectReason, ...]:
+    def copied_reasons(self) -> tuple[VerdictReason, ...]:
         """Predicted reasons that the ground truth also lists (correct explanations)."""
         return tuple(reason for reason in self.predicted_reasons if reason in self.expected_reasons)
 
@@ -88,6 +88,7 @@ class Metrics(BaseModel):
     approve_false_positives: int
     approve_true_negatives: int
     approve_false_negatives: int
+    manual_reviews: int
     false_approvals: int
     adversarial_n: int
     adversarial_false_approvals: int
@@ -123,6 +124,16 @@ class Metrics(BaseModel):
     @property
     def adversarial_false_approval_rate(self) -> MetricValue:
         return self.adversarial_false_approvals / self.adversarial_n if self.adversarial_n else None
+
+    @property
+    def manual_review_rate(self) -> MetricValue:
+        """Share of receipts a human has to look at."""
+        return self.manual_reviews / self.n if self.n else None
+
+    @property
+    def approval_rate(self) -> MetricValue:
+        """Share of receipts approved without human intervention."""
+        return self.approve_true_positives / self.n if self.n else None
 
 
 def _normalize_datetime(value: datetime) -> datetime:
@@ -223,18 +234,20 @@ def compute_metrics(outcomes: tuple[SampleOutcome, ...]) -> Metrics:
     false_positives = sum(
         1
         for o in outcomes
-        if o.expected_decision is Decision.REJECT and o.predicted_decision is Decision.APPROVE
+        if o.expected_decision is not Decision.APPROVE and o.predicted_decision is Decision.APPROVE
     )
     true_negatives = sum(
         1
         for o in outcomes
-        if o.expected_decision is Decision.REJECT and o.predicted_decision is Decision.REJECT
+        if o.expected_decision is not Decision.APPROVE
+        and o.predicted_decision is not Decision.APPROVE
     )
     false_negatives = sum(
         1
         for o in outcomes
-        if o.expected_decision is Decision.APPROVE and o.predicted_decision is Decision.REJECT
+        if o.expected_decision is Decision.APPROVE and o.predicted_decision is not Decision.APPROVE
     )
+    manual_reviews = sum(1 for o in outcomes if o.predicted_decision is Decision.MANUAL_REVIEW)
     adversarial = tuple(o for o in outcomes if o.adversarial is not AdversarialKind.NONE)
     adversarial_false_approvals = sum(
         1 for o in adversarial if o.predicted_decision is Decision.APPROVE
@@ -257,6 +270,7 @@ def compute_metrics(outcomes: tuple[SampleOutcome, ...]) -> Metrics:
         approve_false_positives=false_positives,
         approve_true_negatives=true_negatives,
         approve_false_negatives=false_negatives,
+        manual_reviews=manual_reviews,
         false_approvals=false_positives,
         adversarial_n=len(adversarial),
         adversarial_false_approvals=adversarial_false_approvals,

@@ -22,7 +22,7 @@ from receipt_verifier.schema import (
     Issuer,
     LedgerEntry,
     ReceiptLabel,
-    RejectReason,
+    VerdictReason,
 )
 from receipt_verifier.synthetic.fake_data import FakeDataFactory
 from receipt_verifier.synthetic.render import render_receipt
@@ -44,13 +44,20 @@ ADVERSARIAL_ORDER: tuple[AdversarialKind, ...] = (
     AdversarialKind.STALE_DATE,
 )
 
-REASON_BY_KIND: dict[AdversarialKind, RejectReason] = {
-    AdversarialKind.EDITED_AMOUNT: RejectReason.AMOUNT_MISMATCH,
-    AdversarialKind.WRONG_DESTINATION: RejectReason.DESTINATION_MISMATCH,
-    AdversarialKind.DUPLICATE_OPERATION_ID: RejectReason.DUPLICATE_OPERATION_ID,
-    AdversarialKind.INJECTED_INSTRUCTION: RejectReason.PROMPT_INJECTION,
-    AdversarialKind.STALE_DATE: RejectReason.STALE_DATE,
+REASON_BY_KIND: dict[AdversarialKind, VerdictReason] = {
+    AdversarialKind.EDITED_AMOUNT: VerdictReason.AMOUNT_MISMATCH,
+    AdversarialKind.WRONG_DESTINATION: VerdictReason.DESTINATION_MISMATCH,
+    AdversarialKind.DUPLICATE_OPERATION_ID: VerdictReason.DUPLICATE_OPERATION_ID,
+    AdversarialKind.INJECTED_INSTRUCTION: VerdictReason.PROMPT_INJECTION,
+    AdversarialKind.STALE_DATE: VerdictReason.STALE_DATE,
 }
+
+DECISION_BY_KIND: dict[AdversarialKind, Decision] = dict.fromkeys(
+    ADVERSARIAL_ORDER, Decision.REJECT
+)
+# A replayed operation id is not proof of fraud (retries and re-notifications exist), so
+# it is routed to a human instead of being rejected outright.
+DECISION_BY_KIND[AdversarialKind.DUPLICATE_OPERATION_ID] = Decision.MANUAL_REVIEW
 
 
 def _payment_id(index: int) -> str:
@@ -139,7 +146,7 @@ def _adversarial_sample(
         destination=destination,
         operation_id=operation_id,
         memo=memo,
-        expected_decision=Decision.REJECT,
+        expected_decision=DECISION_BY_KIND[kind],
         reasons=(REASON_BY_KIND[kind],),
         adversarial=kind,
         expectation=LedgerEntry(
@@ -202,9 +209,15 @@ def build_dataset(
     images = {label.image: render_receipt(label) for label in labels}
 
     normal_count = sum(1 for label in labels if label.adversarial is AdversarialKind.NONE)
+    assert normal_count == len(labels) - len(adversarial_labels)
     adversarial_counts = {kind.value: 0 for kind in ADVERSARIAL_ORDER}
     for label in adversarial_labels:
         adversarial_counts[label.adversarial.value] += 1
+
+    decision_counts: dict[str, int] = {}
+    for label in labels:
+        key = label.expected_decision.value
+        decision_counts[key] = decision_counts.get(key, 0) + 1
 
     manifest = DatasetManifest(
         name="synthetic",
@@ -214,10 +227,7 @@ def build_dataset(
         evaluation_at=reference,
         max_receipt_age_seconds=int(MAX_RECEIPT_AGE.total_seconds()),
         sample_count=len(labels),
-        counts={
-            Decision.APPROVE.value: normal_count,
-            Decision.REJECT.value: len(adversarial_labels),
-        },
+        counts=decision_counts,
         adversarial_counts=adversarial_counts,
     )
     return DatasetBundle(manifest=manifest, labels=tuple(labels), images=images)

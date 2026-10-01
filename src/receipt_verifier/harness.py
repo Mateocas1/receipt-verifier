@@ -126,6 +126,9 @@ def render_table(report: EvaluationReport) -> str:
         ("approve f1", format_rate(metrics.approve_f1)),
         ("false approvals (count)", str(metrics.false_approvals)),
         ("false approval rate", format_rate(metrics.false_approval_rate)),
+        ("manual reviews (count)", str(metrics.manual_reviews)),
+        ("manual review rate", format_rate(metrics.manual_review_rate)),
+        ("approval rate", format_rate(metrics.approval_rate)),
         (
             "adversarial false approvals",
             f"{metrics.adversarial_false_approvals}/{metrics.adversarial_n}",

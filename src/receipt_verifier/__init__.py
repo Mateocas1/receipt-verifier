@@ -29,7 +29,7 @@ from receipt_verifier.schema import (
     Issuer,
     LedgerEntry,
     ReceiptLabel,
-    RejectReason,
+    VerdictReason,
 )
 from receipt_verifier.validate import (
     DEFAULT_INJECTION_PATTERNS,
@@ -60,10 +60,10 @@ __all__ = [
     "ReceiptExtractor",
     "ReceiptLabel",
     "ReceiptValidator",
-    "RejectReason",
     "SampleOutcome",
     "ValidationPolicy",
     "ValidationResult",
+    "VerdictReason",
     "build_extraction",
     "compute_metrics",
     "cuit_check_digit",

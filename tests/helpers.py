@@ -16,7 +16,7 @@ from receipt_verifier.schema import (
     Issuer,
     LedgerEntry,
     ReceiptLabel,
-    RejectReason,
+    VerdictReason,
 )
 
 NOW = datetime(2025, 7, 1, 9, 0, tzinfo=AR_TZ)
@@ -44,7 +44,7 @@ def make_label(
     operation_id: str = "MP-000000000001",
     memo: str = "Alquiler julio",
     expected_decision: Decision = Decision.APPROVE,
-    reasons: tuple[RejectReason, ...] = (),
+    reasons: tuple[VerdictReason, ...] = (),
     adversarial: AdversarialKind = AdversarialKind.NONE,
     expectation: LedgerEntry | None = None,
     expected_amount: Decimal | None = None,
