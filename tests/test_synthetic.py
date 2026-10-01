@@ -194,6 +194,16 @@ class TestRoundTrip:
         loaded = load_dataset(tmp_path)
         assert loaded.image_bytes(loaded.labels[0]).startswith(b"\x89PNG")
 
+    def test_shipped_real_slot_is_a_valid_empty_dataset(self) -> None:
+        real = Path(__file__).resolve().parents[1] / "dataset" / "real" / "anonymized"
+        if not (real / "manifest.json").is_file():
+            pytest.skip("no frozen real-data manifest in this checkout")
+        dataset = load_dataset(real)
+        assert dataset.labels == ()
+        assert dataset.manifest.version == "anonymized-v0"
+        assert dataset.manifest.sample_count == 0
+        assert dataset.allowed_destinations == frozenset()
+
     def test_folder_without_manifest_derives_one(self, tmp_path: Path) -> None:
         bundle = build_dataset(seed=7, normal_per_issuer=1)
         write_dataset(bundle, tmp_path)

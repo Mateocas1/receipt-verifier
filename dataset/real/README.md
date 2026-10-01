@@ -48,11 +48,13 @@ This folder is reserved for **anonymized** real receipts. Nothing else belongs h
 
 ## Adding samples
 
+The slot ships with a **frozen** `manifest.json` and no samples yet:
+
 ```
 dataset/real/anonymized/
-├── labels.jsonl          # one ReceiptLabel JSON object per line
-├── manifest.json         # optional; derived automatically when absent
-└── images/
+├── manifest.json         # frozen identity and evaluation clock (committed)
+├── labels.jsonl          # created with the first sample: one ReceiptLabel per line
+└── images/               # anonymized PNGs, one per label
     ├── real-0001.png
     └── real-0002.png
 ```
@@ -61,19 +63,25 @@ dataset/real/anonymized/
 2. Append a `ReceiptLabel` line with `"image": "images/real-000N.png"`, the real
    `expected_decision` and `reasons` you verified by hand, and the `expectation` block copied
    from the payment ledger (never from the receipt).
-3. Run the harness against the folder:
+3. Update `manifest.json` in the same commit: bump `sample_count`, the `counts` and
+   `adversarial_counts` tallies, and move `evaluation_at` to the instant the batch is judged.
+   The frozen clock is what makes a later run reproducible; leaving it stale makes every new
+   receipt look like it arrived from the future.
+4. Run the harness against the folder:
 
    ```bash
    uv run python scripts/evaluate.py --dataset dataset/real/anonymized --extractor dummy
    ```
 
    The dummy extractor reads `labels.jsonl`, so this checks the labels, the validator and the
-   harness wiring. Evaluate a real extractor by wiring a new `ReceiptExtractor`
-   implementation into `scripts/evaluate.py`.
+   harness wiring. Then run the extractor you actually care about:
 
-   Without a `manifest.json` the loader derives one on the fly and uses the **wall clock** as
-   the evaluation clock (a real receipt must be judged against the moment it is verified). Add
-   a `manifest.json` only when you need a frozen, reproducible clock.
+   ```bash
+   uv run python scripts/evaluate.py --dataset dataset/real/anonymized --extractor ocr
+   ```
+
+   A folder without `manifest.json` is also accepted: the loader derives one from the labels
+   and the wall clock, which is the right default for a quick local check.
 4. Sanity-check the diff for leaked strings before committing:
 
    ```bash
