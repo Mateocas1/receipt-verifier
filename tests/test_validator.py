@@ -167,6 +167,16 @@ class TestOperationId:
         assert result.reject_reasons == ()
         assert result.needs_human
 
+    def test_missing_operation_id_is_not_reported_as_a_duplicate(
+        self, validator: ReceiptValidator
+    ) -> None:
+        """One reason is enough: a receipt with no id is missing a field, not a replay."""
+        label = make_label()
+        extraction = extraction_from(label, operation_id=None)
+        result = validate(validator, label, extraction, seen_operation_ids={"MP-ANY"})
+        assert result.reasons == (VerdictReason.MISSING_FIELD,)
+        assert result.checks["operation_id_unique"] is False
+
     def test_unseen_operation_id_is_accepted(self, validator: ReceiptValidator) -> None:
         label = make_label(operation_id="MP-FRESH")
         assert validate(validator, label, seen_operation_ids={"MP-OTHER"}).approved

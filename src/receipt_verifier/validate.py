@@ -254,8 +254,16 @@ class ReceiptValidator:
                 checks["date_window"] = True
 
         operation_id = fields["operation_id"].value
-        unique = operation_id is not None and operation_id not in seen
-        record("operation_id_unique", unique, VerdictReason.DUPLICATE_OPERATION_ID)
+        if operation_id is None:
+            # A missing id is reported once, as a missing field: it cannot be a duplicate
+            # of anything, and a second reason would only add noise for the reviewer.
+            checks["operation_id_unique"] = False
+        else:
+            record(
+                "operation_id_unique",
+                operation_id not in seen,
+                VerdictReason.DUPLICATE_OPERATION_ID,
+            )
 
         return ValidationResult(decision=decide(reasons), reasons=tuple(reasons), checks=checks)
 
