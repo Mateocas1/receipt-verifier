@@ -211,6 +211,19 @@ class TestFieldComparison:
         assert not fields_match("sender_bank", "Banco del Río", None)
         assert not fields_match("sender_bank", None, "Banco del Río")
 
+    def test_two_absences_are_a_match(self) -> None:
+        """No memo printed and no memo extracted agree; that is not a miss."""
+        assert fields_match("memo", "", None)
+        assert fields_match("memo", None, "")
+        assert not fields_match("memo", "", "alquiler")
+        assert not fields_match("memo", "alquiler", None)
+
+    def test_text_comparison_folds_accents(self) -> None:
+        assert fields_match("sender_name", "Sofía Ibáñez", "Sofia Ibanez")
+        assert fields_match("sender_bank", "Banco del Río", "banco del rio")
+        assert normalize_field_value("sender_name", "  Gómez  ") == "gomez"
+        assert not fields_match("sender_name", "Sofía Ibáñez", "Sofia Ibanezx")
+
     def test_unknown_types_fall_back_to_equality(self) -> None:
         assert normalize_field_value("weird", 3) == 3
 

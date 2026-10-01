@@ -19,6 +19,7 @@ things and the difference matters for a money-moving system:
 
 from __future__ import annotations
 
+import unicodedata
 from datetime import datetime
 from decimal import Decimal
 from statistics import mean
@@ -151,8 +152,19 @@ def normalize_field_value(name: str, value: object) -> object:
     if isinstance(value, Issuer):
         return value.value
     if isinstance(value, str):
-        return " ".join(value.split()).casefold()
+        return _fold_text(value)
     return value
+
+
+def _fold_text(value: str) -> str:
+    """Accent- and case-insensitive comparison form for free text.
+
+    "Gómez" and "Gomez" are the same name; OCR and font rendering disagree about the
+    accent, the receipt does not.
+    """
+    decomposed = unicodedata.normalize("NFKD", value)
+    ascii_text = decomposed.encode("ascii", "ignore").decode("ascii")
+    return " ".join(ascii_text.split()).casefold()
 
 
 def expected_field_value(label: ReceiptLabel, name: str) -> object:
@@ -171,10 +183,18 @@ def expected_field_value(label: ReceiptLabel, name: str) -> object:
     return mapping[name]
 
 
+def _is_absent(value: object) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
 def fields_match(name: str, expected: object, extracted: object) -> bool:
-    """True only when both sides carry a value and they are equivalent."""
-    if expected is None or extracted is None:
-        return False
+    """True when both sides are equivalent — including "both absent".
+
+    A receipt that prints no memo and an extraction that reports no memo agree; that is
+    a correct extraction, not a miss.
+    """
+    if _is_absent(expected) or _is_absent(extracted):
+        return _is_absent(expected) and _is_absent(extracted)
     return normalize_field_value(name, expected) == normalize_field_value(name, extracted)
 
 
