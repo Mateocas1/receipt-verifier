@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from decimal import Decimal
+from time import sleep
 
 from receipt_verifier.builders import build_extraction
 from receipt_verifier.extraction import FIELD_NAMES, ExtractionResult
@@ -101,3 +102,52 @@ def extraction_from(
         if values.get(name) is None:
             confidences.setdefault(name, 0.0)
     return build_extraction(extractor, values, confidences=confidences)
+
+
+class StubExtractor:
+    """Test-only extractor: canned result, optional failure and optional latency."""
+
+    def __init__(
+        self,
+        name: str = "stub",
+        *,
+        result: ExtractionResult | None = None,
+        error: Exception | None = None,
+        delay: float = 0.0,
+    ) -> None:
+        self._name = name
+        self._result = result
+        self._error = error
+        self._delay = delay
+        self.calls = 0
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def set_error(self, error: Exception | None) -> None:
+        """Switch the stub between healthy and failing mode."""
+        self._error = error
+
+    def extract(self, image: bytes) -> ExtractionResult:
+        self.calls += 1
+        if self._delay:
+            sleep(self._delay)
+        if self._error is not None:
+            raise self._error
+        if self._result is not None:
+            return self._result
+        return build_extraction(
+            self._name,
+            {
+                "amount": Decimal("2500.00"),
+                "amount_detail": Decimal("2500.00"),
+                "transferred_at": RECEIVED_AT,
+                "sender_name": "Camila Gómez",
+                "sender_bank": "Banco del Río",
+                "destination": ALIAS_DESTINATION,
+                "operation_id": "MP-000000000001",
+                "issuer": Issuer.MP,
+                "memo": "Alquiler julio",
+            },
+        )

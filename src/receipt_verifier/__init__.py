@@ -1,6 +1,16 @@
 """Receipt verifier: schema, synthetic dataset, extractors, validator and evaluation harness."""
 
 from receipt_verifier.builders import build_extraction
+from receipt_verifier.circuit import (
+    CircuitBreaker,
+    CircuitOpenError,
+    CircuitState,
+    CircuitStatus,
+    ExtractorTimeout,
+    GuardedExtractor,
+    run_with_timeout,
+    shutdown_executor,
+)
 from receipt_verifier.confidence import (
     SourceQuality,
     field_confidences,
@@ -56,6 +66,10 @@ __all__ = [
     "FIELD_NAMES",
     "HARD_REJECT_REASONS",
     "AdversarialKind",
+    "CircuitBreaker",
+    "CircuitOpenError",
+    "CircuitState",
+    "CircuitStatus",
     "Dataset",
     "DatasetBundle",
     "DatasetManifest",
@@ -66,6 +80,8 @@ __all__ = [
     "EvaluationReport",
     "ExtractedField",
     "ExtractionResult",
+    "ExtractorTimeout",
+    "GuardedExtractor",
     "Issuer",
     "LedgerEntry",
     "Metrics",
@@ -91,8 +107,10 @@ __all__ = [
     "render_amount_ars",
     "render_table",
     "run_evaluation",
+    "run_with_timeout",
     "score_extraction",
     "score_field",
     "severity_of",
+    "shutdown_executor",
     "write_dataset",
 ]
