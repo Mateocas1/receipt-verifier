@@ -26,10 +26,17 @@ from receipt_verifier.schema import (
     ReceiptLabel,
     RejectReason,
 )
+from receipt_verifier.validate import (
+    DEFAULT_INJECTION_PATTERNS,
+    ReceiptValidator,
+    ValidationPolicy,
+    ValidationResult,
+)
 
 __all__ = [
     "AR_TZ",
     "CRITICAL_FIELD_NAMES",
+    "DEFAULT_INJECTION_PATTERNS",
     "FIELD_NAMES",
     "AdversarialKind",
     "DatasetManifest",
@@ -42,7 +49,10 @@ __all__ = [
     "LedgerEntry",
     "ReceiptExtractor",
     "ReceiptLabel",
+    "ReceiptValidator",
     "RejectReason",
+    "ValidationPolicy",
+    "ValidationResult",
     "build_extraction",
     "cuit_check_digit",
     "is_valid_cbu_or_cvu",
