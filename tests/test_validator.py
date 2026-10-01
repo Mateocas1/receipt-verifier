@@ -268,6 +268,48 @@ class TestPolicyOverrides:
 
 
 class TestSeverityRouting:
+    def test_unreadable_amount_is_not_reported_as_a_mismatch(
+        self, validator: ReceiptValidator
+    ) -> None:
+        """Missing beats wrong: an unreadable field must not look like fraud."""
+        label = make_label()
+        extraction = extraction_from(label, amount=None, amount_detail=None)
+        result = validate(validator, label, extraction)
+        assert result.decision is Decision.MANUAL_REVIEW
+        assert VerdictReason.MISSING_FIELD in result.reasons
+        assert VerdictReason.AMOUNT_MISMATCH not in result.reasons
+        assert result.checks["amount_matches_expectation"] is False
+
+    def test_unreadable_destination_is_not_reported_as_a_mismatch(
+        self, validator: ReceiptValidator
+    ) -> None:
+        label = make_label()
+        extraction = extraction_from(label, destination=None)
+        result = validate(validator, label, extraction)
+        assert result.decision is Decision.MANUAL_REVIEW
+        assert VerdictReason.DESTINATION_MISMATCH not in result.reasons
+        assert result.checks["destination_allowed"] is False
+        assert result.checks["destination_matches_expectation"] is False
+
+    def test_empty_reading_with_a_ledger_is_manual_review(
+        self, validator: ReceiptValidator
+    ) -> None:
+        """Nothing readable and nothing wrong: a human decides, code does not reject."""
+        label = make_label()
+        empty = extraction_from(
+            label,
+            amount=None,
+            amount_detail=None,
+            transferred_at=None,
+            sender_name=None,
+            destination=None,
+            operation_id=None,
+            issuer=None,
+        )
+        result = validate(validator, label, empty)
+        assert result.decision is Decision.MANUAL_REVIEW
+        assert result.reject_reasons == ()
+
     def test_no_expectation_cannot_approve(self, validator: ReceiptValidator) -> None:
         label = make_label()
         result = validator.validate(extraction_from(label), None, now=NOW)

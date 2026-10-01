@@ -99,7 +99,12 @@ class Destination(BaseModel):
 
     kind: DestinationKind
     value: str
-    holder: str = Field(min_length=1)
+    holder: str = ""
+    """Holder name when the receipt or the ledger provides one.
+
+    Empty is allowed: the API and the ledger only need kind + value, and the validator
+    compares ``key``. A receipt that does not print the holder must not become unusable.
+    """
 
     @model_validator(mode="after")
     def _validate_value(self) -> Self:

@@ -170,10 +170,10 @@ class TestFieldExtraction:
         assert parse_document(doc).values["sender_name"] == "Camila Gómez"
 
     def test_fragmented_label_never_fabricates_a_holder(self) -> None:
-        """A truncated label is not guessed: the destination is dropped instead.
+        """A truncated label is not guessed: the holder stays empty.
 
         The engine upscales before recognition precisely so this does not happen; when it
-        does anyway, the parser prefers "no value" (-> manual review) over a wrong one.
+        does anyway, the parser prefers "no holder" over a fabricated one.
         """
         doc = document(
             [
@@ -184,7 +184,8 @@ class TestFieldExtraction:
                 line("Camila Ferreyra", 420, 100),
             ]
         )
-        assert "destination" not in parse_document(doc).values
+        destination = parse_document(doc).values["destination"]
+        assert destination["value"] == "camila.gomez.ar"
 
     def test_label_prefixed_value_is_not_confused_with_a_longer_label(self) -> None:
         doc = document(
@@ -226,9 +227,15 @@ class TestFieldExtraction:
             "holder": "Lautaro Ojeda",
         }
 
-    def test_missing_destination_holder_drops_the_destination(self) -> None:
+    def test_missing_holder_keeps_the_destination_without_inventing_one(self) -> None:
+        """The holder is not compared by the validator; a missing one must not hide the
+        destination from the allowlist check."""
         doc = document([line("Destino", 30, 100), line("ALIAS camila.gomez.ar", 300, 100)])
-        assert "destination" not in parse_document(doc).values
+        assert parse_document(doc).values["destination"] == {
+            "kind": "alias",
+            "value": "camila.gomez.ar",
+            "holder": "",
+        }
 
     def test_missing_rows_are_not_invented(self) -> None:
         parsed = parse_document(document([line("Comprobante", 30, 10)]))

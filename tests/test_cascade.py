@@ -7,8 +7,6 @@ from decimal import Decimal
 import pytest
 
 from receipt_verifier.circuit import CircuitBreaker, CircuitState, GuardedExtractor
-from receipt_verifier.confidence import SourceQuality, score_extraction
-from receipt_verifier.extraction import ExtractionResult
 from receipt_verifier.extractors.cascade import (
     NO_EXTRACTOR,
     CascadeExhausted,
@@ -16,43 +14,10 @@ from receipt_verifier.extractors.cascade import (
 )
 from receipt_verifier.extractors.llm import LlmTransportError
 from receipt_verifier.validate import ValidationPolicy
-from tests.helpers import StubExtractor
+from tests.helpers import StubExtractor, reading
 
 IMAGE = b"\x89PNG-irrelevant"
 CRITICAL = ("amount", "transferred_at", "sender_name", "destination", "operation_id", "issuer")
-
-
-def reading(
-    extractor: str,
-    *,
-    missing: str | None = None,
-    weak: str | None = None,
-    confidence: float = 0.95,
-) -> ExtractionResult:
-    """A full reading, optionally missing one critical field or weak on one of them."""
-    values: dict[str, object] = {
-        "amount": "2.500,00",
-        "amount_detail": "2.500,00",
-        "transferred_at": "30/06/2025 18:20",
-        "sender_name": "Camila Gómez",
-        "sender_bank": "Banco del Río",
-        "destination": {"kind": "alias", "value": "camila.gomez.ar", "holder": "Lautaro Ojeda"},
-        "operation_id": "MP-6E81DA675F9D",
-        "issuer": "mp",
-        "memo": "Alquiler julio",
-    }
-    qualities = dict.fromkeys(values, 0.95)
-    if missing == "amount":
-        values["amount"] = "no legible"
-        qualities["amount"] = 0.0
-    elif missing is not None:
-        values.pop(missing, None)
-        qualities.pop(missing, None)
-    if weak is not None:
-        qualities[weak] = confidence
-    return score_extraction(
-        extractor, values, source_quality=SourceQuality(default=0.95, per_field=qualities)
-    )
 
 
 class TestFallback:

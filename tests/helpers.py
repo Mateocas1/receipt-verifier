@@ -7,6 +7,7 @@ from decimal import Decimal
 from time import sleep
 
 from receipt_verifier.builders import build_extraction
+from receipt_verifier.confidence import SourceQuality, score_extraction
 from receipt_verifier.extraction import FIELD_NAMES, ExtractionResult
 from receipt_verifier.schema import (
     AR_TZ,
@@ -151,3 +152,44 @@ class StubExtractor:
                 "memo": "Alquiler julio",
             },
         )
+
+
+def printed_now() -> str:
+    """Current Argentine local time in the receipts' printed format."""
+    return datetime.now(tz=AR_TZ).strftime("%d/%m/%Y %H:%M")
+
+
+def reading(
+    extractor: str,
+    *,
+    missing: str | None = None,
+    weak: str | None = None,
+    confidence: float = 0.95,
+    **overrides: object,
+) -> ExtractionResult:
+    """A complete reading, optionally missing one critical field or weak on one of them."""
+    values: dict[str, object] = {
+        "amount": "2.500,00",
+        "amount_detail": "2.500,00",
+        # "Now" by default: a fixture date would go stale against the service clock.
+        "transferred_at": printed_now(),
+        "sender_name": "Camila Gómez",
+        "sender_bank": "Banco del Río",
+        "destination": {"kind": "alias", "value": "camila.gomez.ar", "holder": "Lautaro Ojeda"},
+        "operation_id": "MP-6E81DA675F9D",
+        "issuer": "mp",
+        "memo": "Alquiler julio",
+    }
+    values.update(overrides)
+    qualities = dict.fromkeys(values, confidence)
+    if missing == "amount":
+        values["amount"] = "no legible"
+        qualities["amount"] = 0.0
+    elif missing is not None:
+        values.pop(missing, None)
+        qualities.pop(missing, None)
+    if weak is not None:
+        qualities[weak] = confidence
+    return score_extraction(
+        extractor, values, source_quality=SourceQuality(default=0.95, per_field=qualities)
+    )

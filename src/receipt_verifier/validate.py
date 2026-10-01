@@ -218,8 +218,16 @@ class ReceiptValidator:
         record("amount_self_consistent", amounts_consistent, VerdictReason.AMOUNT_MISMATCH)
 
         destination = fields["destination"].value
-        destination_allowed = destination is not None and destination.key in self._allowed
-        record("destination_allowed", destination_allowed, VerdictReason.DESTINATION_MISMATCH)
+        if destination is None:
+            # Same principle as the amount: an unreadable destination is missing, not
+            # disallowed, and `missing_field` already sends it to a human.
+            checks["destination_allowed"] = False
+        else:
+            record(
+                "destination_allowed",
+                destination.key in self._allowed,
+                VerdictReason.DESTINATION_MISMATCH,
+            )
 
         if expectation is None:
             checks["ledger_evidence"] = False
@@ -228,18 +236,24 @@ class ReceiptValidator:
             reasons.append(VerdictReason.UNVERIFIED_PAYMENT)
         else:
             checks["ledger_evidence"] = True
-            amount_matches = amount is not None and quantize_amount(amount) == quantize_amount(
-                expectation.amount
-            )
-            record("amount_matches_expectation", amount_matches, VerdictReason.AMOUNT_MISMATCH)
-            destination_matches = (
-                destination is not None and destination.key == expectation.destination.key
-            )
-            record(
-                "destination_matches_expectation",
-                destination_matches,
-                VerdictReason.DESTINATION_MISMATCH,
-            )
+            # An unreadable field is not a mismatch: `missing_field` already routes the
+            # receipt to a human, and calling it "amount_mismatch" would look like fraud.
+            if amount is None:
+                checks["amount_matches_expectation"] = False
+            else:
+                record(
+                    "amount_matches_expectation",
+                    quantize_amount(amount) == quantize_amount(expectation.amount),
+                    VerdictReason.AMOUNT_MISMATCH,
+                )
+            if destination is None:
+                checks["destination_matches_expectation"] = False
+            else:
+                record(
+                    "destination_matches_expectation",
+                    destination.key == expectation.destination.key,
+                    VerdictReason.DESTINATION_MISMATCH,
+                )
 
         transferred_at = fields["transferred_at"].value
         if transferred_at is None:

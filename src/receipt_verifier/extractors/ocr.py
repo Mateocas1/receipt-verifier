@@ -497,9 +497,9 @@ def parse_document(document: OcrDocument) -> ParsedFields:
         destination_text = _value_after(rows, destination_row, LABELS["destination"])
         parsed = parse_destination_text(destination_text) if destination_text else None
         holder = take("destination_holder", LABELS["destination_holder"])
-        if parsed is not None and holder:
+        if parsed is not None:
             kind, raw = parsed
-            values["destination"] = {"kind": kind, "value": raw, "holder": holder}
+            values["destination"] = {"kind": kind, "value": raw, "holder": holder or ""}
             quality["destination"] = destination_row.confidence
 
     operation_id = extract_operation_id(rows)
