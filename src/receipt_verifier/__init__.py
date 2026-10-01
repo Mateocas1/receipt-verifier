@@ -1,4 +1,5 @@
 """Receipt verifier: schema, synthetic dataset, extractors, validator and evaluation harness."""
+
 from receipt_verifier.builders import build_extraction
 from receipt_verifier.dataset import Dataset, DatasetBundle, load_dataset, write_dataset
 from receipt_verifier.extraction import (
@@ -9,6 +10,7 @@ from receipt_verifier.extraction import (
     ReceiptExtractor,
 )
 from receipt_verifier.extractors.dummy import DummyExtractor
+from receipt_verifier.harness import EvaluationReport, render_table, run_evaluation
 from receipt_verifier.identifiers import (
     cuit_check_digit,
     is_valid_cbu_or_cvu,
@@ -49,6 +51,7 @@ __all__ = [
     "Destination",
     "DestinationKind",
     "DummyExtractor",
+    "EvaluationReport",
     "ExtractedField",
     "ExtractionResult",
     "Issuer",
@@ -69,5 +72,7 @@ __all__ = [
     "load_dataset",
     "parse_amount_text",
     "render_amount_ars",
+    "render_table",
+    "run_evaluation",
     "write_dataset",
 ]
