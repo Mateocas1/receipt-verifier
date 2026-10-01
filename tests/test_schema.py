@@ -12,7 +12,7 @@ from receipt_verifier.schema import (
     DestinationKind,
     LedgerEntry,
     ReceiptLabel,
-    RejectReason,
+    VerdictReason,
 )
 from tests.helpers import ALIAS_DESTINATION, NOW, make_label
 
@@ -65,7 +65,7 @@ class TestReceiptLabel:
 
     def test_approve_with_reasons_is_rejected(self) -> None:
         with pytest.raises(ValidationError, match="approved sample cannot"):
-            make_label(reasons=(RejectReason.AMOUNT_MISMATCH,))
+            make_label(reasons=(VerdictReason.AMOUNT_MISMATCH,))
 
     def test_reject_without_reasons_is_rejected(self) -> None:
         with pytest.raises(ValidationError, match="must carry at least one reason"):
@@ -74,9 +74,22 @@ class TestReceiptLabel:
                 adversarial=AdversarialKind.STALE_DATE,
             )
 
-    def test_adversarial_mutation_must_be_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="adversarial sample must be rejected"):
+    def test_adversarial_mutation_cannot_be_expected_to_approve(self) -> None:
+        with pytest.raises(ValidationError, match="cannot be expected to approve"):
             make_label(adversarial=AdversarialKind.EDITED_AMOUNT)
+
+    def test_manual_review_requires_reasons(self) -> None:
+        with pytest.raises(ValidationError, match="must carry at least one reason"):
+            make_label(expected_decision=Decision.MANUAL_REVIEW)
+
+    def test_manual_review_label_is_valid(self) -> None:
+        label = make_label(
+            expected_decision=Decision.MANUAL_REVIEW,
+            reasons=(VerdictReason.DUPLICATE_OPERATION_ID,),
+            adversarial=AdversarialKind.DUPLICATE_OPERATION_ID,
+        )
+        assert label.expected_decision is Decision.MANUAL_REVIEW
+        assert label.reasons == (VerdictReason.DUPLICATE_OPERATION_ID,)
 
     def test_amounts_are_quantized_to_cents(self) -> None:
         label = make_label(amount=Decimal("1000"), amount_detail=Decimal("1000"))
@@ -125,7 +138,7 @@ class TestLedgerEntry:
     def test_adversarial_kind_round_trips(self) -> None:
         label = make_label(
             expected_decision=Decision.REJECT,
-            reasons=(RejectReason.STALE_DATE,),
+            reasons=(VerdictReason.STALE_DATE,),
             adversarial=AdversarialKind.STALE_DATE,
         )
         assert label.adversarial is AdversarialKind.STALE_DATE

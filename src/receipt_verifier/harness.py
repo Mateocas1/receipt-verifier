@@ -126,6 +126,9 @@ def render_table(report: EvaluationReport) -> str:
         ("approve f1", format_rate(metrics.approve_f1)),
         ("false approvals (count)", str(metrics.false_approvals)),
         ("false approval rate", format_rate(metrics.false_approval_rate)),
+        ("manual reviews (count)", str(metrics.manual_reviews)),
+        ("manual review rate", format_rate(metrics.manual_review_rate)),
+        ("approval rate", format_rate(metrics.approval_rate)),
         (
             "adversarial false approvals",
             f"{metrics.adversarial_false_approvals}/{metrics.adversarial_n}",
@@ -135,6 +138,11 @@ def render_table(report: EvaluationReport) -> str:
             format_rate(metrics.adversarial_false_approval_rate),
         ),
         ("coverage", format_rate(metrics.coverage)),
+        (
+            "extractor usage",
+            ", ".join(f"{name}={count}" for name, count in sorted(metrics.extractor_usage.items()))
+            or "n/a",
+        ),
         ("latency mean ms", f"{metrics.latency_mean_ms:.2f}"),
         ("latency p50 ms", f"{metrics.latency_p50_ms:.2f}"),
         ("latency p95 ms", f"{metrics.latency_p95_ms:.2f}"),

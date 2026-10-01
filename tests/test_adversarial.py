@@ -40,7 +40,7 @@ class TestAdversarialGate:
         assert clean_report.metrics.adversarial_false_approvals == 0
         assert clean_report.metrics.false_approval_rate == 0.0
 
-    def test_every_adversarial_sample_is_rejected(self, clean_report: EvaluationReport) -> None:
+    def test_no_adversarial_sample_is_ever_approved(self, clean_report: EvaluationReport) -> None:
         adversarial = [
             outcome
             for outcome in clean_report.outcomes
@@ -53,6 +53,22 @@ class TestAdversarialGate:
             if outcome.predicted_decision is Decision.APPROVE
         ]
         assert approved == []
+
+    def test_adversarial_kinds_route_to_their_expected_verdict(
+        self, clean_report: EvaluationReport
+    ) -> None:
+        by_kind: dict[AdversarialKind, set[Decision]] = {}
+        for outcome in clean_report.outcomes:
+            if outcome.adversarial is not AdversarialKind.NONE:
+                by_kind.setdefault(outcome.adversarial, set()).add(outcome.predicted_decision)
+        assert by_kind[AdversarialKind.DUPLICATE_OPERATION_ID] == {Decision.MANUAL_REVIEW}
+        for kind, decisions in by_kind.items():
+            if kind is not AdversarialKind.DUPLICATE_OPERATION_ID:
+                assert decisions == {Decision.REJECT}, kind
+
+    def test_manual_review_count_is_reported(self, clean_report: EvaluationReport) -> None:
+        assert clean_report.metrics.manual_reviews == 6
+        assert clean_report.metrics.manual_review_rate == pytest.approx(6 / 42)
 
     def test_predicted_reasons_match_the_ground_truth_reason(
         self, clean_report: EvaluationReport
@@ -92,7 +108,7 @@ class TestNoisyRunIsHonest:
         recounted = sum(
             1
             for outcome in noisy_report.outcomes
-            if outcome.expected_decision is Decision.REJECT
+            if outcome.expected_decision is not Decision.APPROVE
             and outcome.predicted_decision is Decision.APPROVE
         )
         adversarial_recounted = sum(
@@ -127,6 +143,7 @@ class TestCommittedDatasetGate:
     def test_dataset_shape(self, committed_report: EvaluationReport) -> None:
         assert committed_report.metrics.n == 150
         assert committed_report.metrics.adversarial_n == 30
+        assert committed_report.metrics.manual_reviews == 6
         assert committed_report.metrics.approve_precision == 1.0
         assert committed_report.metrics.approve_recall == 1.0
 

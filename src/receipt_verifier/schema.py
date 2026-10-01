@@ -47,14 +47,21 @@ class Issuer(StrEnum):
 
 
 class Decision(StrEnum):
-    """Verifier verdict."""
+    """Verifier verdict. ``MANUAL_REVIEW`` means a human must decide: the code could not
+    establish a confident approve and found no hard violation either."""
 
     APPROVE = "approve"
     REJECT = "reject"
+    MANUAL_REVIEW = "manual_review"
 
 
-class RejectReason(StrEnum):
-    """Why a receipt was rejected. Also used as the adversarial label taxonomy."""
+class VerdictReason(StrEnum):
+    """Machine-readable reason attached to a non-approve verdict.
+
+    Reasons are split into two severities by :mod:`receipt_verifier.validate`: hard
+    violations that force ``reject``, and uncertainty flags that route to
+    ``manual_review``. Also used as the adversarial label taxonomy.
+    """
 
     AMOUNT_MISMATCH = "amount_mismatch"
     DESTINATION_MISMATCH = "destination_mismatch"
@@ -64,6 +71,8 @@ class RejectReason(StrEnum):
     PROMPT_INJECTION = "prompt_injection"
     MISSING_FIELD = "missing_field"
     LOW_CONFIDENCE = "low_confidence"
+    UNVERIFIED_PAYMENT = "unverified_payment"
+    EXTRACTION_FAILED = "extraction_failed"
 
 
 class DestinationKind(StrEnum):
@@ -90,7 +99,12 @@ class Destination(BaseModel):
 
     kind: DestinationKind
     value: str
-    holder: str = Field(min_length=1)
+    holder: str = ""
+    """Holder name when the receipt or the ledger provides one.
+
+    Empty is allowed: the API and the ledger only need kind + value, and the validator
+    compares ``key``. A receipt that does not print the holder must not become unusable.
+    """
 
     @model_validator(mode="after")
     def _validate_value(self) -> Self:
@@ -141,7 +155,7 @@ class ReceiptLabel(BaseModel):
     operation_id: str = Field(min_length=1)
     memo: str = ""
     expected_decision: Decision
-    reasons: tuple[RejectReason, ...] = ()
+    reasons: tuple[VerdictReason, ...] = ()
     adversarial: AdversarialKind = AdversarialKind.NONE
     expectation: LedgerEntry
 
@@ -181,14 +195,14 @@ class ReceiptLabel(BaseModel):
     @model_validator(mode="after")
     def _validate_verdict(self) -> Self:
         if self.expected_decision is Decision.APPROVE and self.reasons:
-            raise ValueError("an approved sample cannot carry reject reasons")
-        if self.expected_decision is Decision.REJECT and not self.reasons:
-            raise ValueError("a rejected sample must carry at least one reason")
+            raise ValueError("an approved sample cannot carry reasons")
+        if self.expected_decision is not Decision.APPROVE and not self.reasons:
+            raise ValueError("a non-approved sample must carry at least one reason")
         if (
             self.adversarial is not AdversarialKind.NONE
-            and self.expected_decision is not Decision.REJECT
+            and self.expected_decision is Decision.APPROVE
         ):
-            raise ValueError("an adversarial sample must be rejected")
+            raise ValueError("an adversarial sample cannot be expected to approve")
         return self
 
     @property

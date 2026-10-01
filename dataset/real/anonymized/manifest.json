@@ -1,0 +1,11 @@
+{
+  "name": "real",
+  "version": "anonymized-v0",
+  "seed": 0,
+  "generated_at": "2025-07-01T09:00:00-03:00",
+  "evaluation_at": "2025-07-01T09:00:00-03:00",
+  "max_receipt_age_seconds": 604800,
+  "sample_count": 0,
+  "counts": {},
+  "adversarial_counts": {}
+}

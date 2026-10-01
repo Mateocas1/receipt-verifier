@@ -98,9 +98,13 @@ def load_dataset(root: Path, *, now: datetime | None = None) -> Dataset:
 
     A folder without ``manifest.json`` is accepted: the manifest is derived from the
     labels and the current instant, which is how locally curated (real, anonymized)
-    samples are evaluated.
+    samples are evaluated. An empty folder (a frozen manifest and no labels yet) is a
+    valid dataset with zero samples.
     """
-    raw_lines = (root / LABELS_FILENAME).read_text(encoding="utf-8").splitlines()
+    labels_path = root / LABELS_FILENAME
+    raw_lines = (
+        labels_path.read_text(encoding="utf-8").splitlines() if labels_path.is_file() else []
+    )
     labels = tuple(ReceiptLabel.model_validate_json(line) for line in raw_lines if line.strip())
     manifest_path = root / MANIFEST_FILENAME
     if manifest_path.is_file():

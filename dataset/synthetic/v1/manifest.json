@@ -8,7 +8,8 @@
   "sample_count": 150,
   "counts": {
     "approve": 120,
-    "reject": 30
+    "reject": 24,
+    "manual_review": 6
   },
   "adversarial_counts": {
     "edited_amount": 6,

@@ -4,7 +4,16 @@ The validator never trusts the extractor's own confidence as a verdict. It compa
 the extracted fields against independent evidence (the expected payment, the
 destination allowlist, the operation-id registry) and against the receipt's own
 internal consistency, and it refuses to approve when untrusted text carries
-instructions. A rejection always carries at least one machine-readable reason.
+instructions.
+
+Every non-approve verdict carries at least one machine-readable reason, and every
+reason has a severity:
+
+* ``reject`` — hard evidence that the receipt is invalid or hostile (amount or
+destination does not match the ledger, date outside the window, injection text);
+* ``review`` — the code could not establish a confident approve (missing or
+  low-confidence field, replay of a known operation id, no ledger evidence to compare
+  against). A human decides, and the machine never approves on its own.
 """
 
 from __future__ import annotations
@@ -14,12 +23,13 @@ import unicodedata
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from receipt_verifier.extraction import CRITICAL_FIELD_NAMES, ExtractionResult
 from receipt_verifier.identifiers import quantize_amount
-from receipt_verifier.schema import Decision, LedgerEntry, RejectReason
+from receipt_verifier.schema import Decision, LedgerEntry, VerdictReason
 
 DEFAULT_INJECTION_PATTERNS: tuple[str, ...] = (
     r"ignora las instrucciones",
@@ -44,6 +54,42 @@ DEFAULT_INJECTION_PATTERNS: tuple[str, ...] = (
 """Instruction-like phrases that make untrusted receipt text unsafe to act on."""
 
 
+class ReasonSeverity(StrEnum):
+    """How a reason maps onto the verdict."""
+
+    REJECT = "reject"
+    REVIEW = "review"
+
+
+HARD_REJECT_REASONS: frozenset[VerdictReason] = frozenset(
+    {
+        VerdictReason.AMOUNT_MISMATCH,
+        VerdictReason.DESTINATION_MISMATCH,
+        VerdictReason.STALE_DATE,
+        VerdictReason.FUTURE_DATE,
+        VerdictReason.PROMPT_INJECTION,
+    }
+)
+"""Reasons that are evidence of an invalid or hostile receipt."""
+
+
+def severity_of(reason: VerdictReason) -> ReasonSeverity:
+    """Hard violations reject; everything else is routed to a human."""
+    return ReasonSeverity.REJECT if reason in HARD_REJECT_REASONS else ReasonSeverity.REVIEW
+
+
+def decide(reasons: Iterable[VerdictReason]) -> Decision:
+    """Verdict from reasons: reject > manual review > approve.
+
+    An empty reason list is the only path to ``approve``; anything the code could not
+    settle ends in ``manual_review`` and never in an automatic approval.
+    """
+    collected = tuple(reasons)
+    if any(severity_of(reason) is ReasonSeverity.REJECT for reason in collected):
+        return Decision.REJECT
+    return Decision.MANUAL_REVIEW if collected else Decision.APPROVE
+
+
 class ValidationPolicy(BaseModel):
     """Tunable thresholds. Defaults are the ones the synthetic dataset is judged with."""
 
@@ -61,12 +107,24 @@ class ValidationResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     decision: Decision
-    reasons: tuple[RejectReason, ...] = ()
+    reasons: tuple[VerdictReason, ...] = ()
     checks: dict[str, bool]
 
     @property
     def approved(self) -> bool:
         return self.decision is Decision.APPROVE
+
+    @property
+    def reject_reasons(self) -> tuple[VerdictReason, ...]:
+        return tuple(r for r in self.reasons if severity_of(r) is ReasonSeverity.REJECT)
+
+    @property
+    def review_reasons(self) -> tuple[VerdictReason, ...]:
+        return tuple(r for r in self.reasons if severity_of(r) is ReasonSeverity.REVIEW)
+
+    @property
+    def needs_human(self) -> bool:
+        return self.decision is Decision.MANUAL_REVIEW
 
 
 def normalize_untrusted_text(text: str) -> str:
@@ -99,21 +157,28 @@ class ReceiptValidator:
     def validate(
         self,
         extraction: ExtractionResult,
-        expectation: LedgerEntry,
+        expectation: LedgerEntry | None,
         *,
         now: datetime,
         seen_operation_ids: Iterable[str] = (),
     ) -> ValidationResult:
-        """Validate one extraction against its expected payment and the running state."""
+        """Validate one extraction against its expected payment and the running state.
+
+        ``expectation`` may be ``None`` when no ledger evidence is available (for example a
+        receipt forwarded without the matching payment). The amount and destination then
+        cannot be verified, which is reported as ``unverified_payment`` and routes the
+        verdict to ``manual_review``: the service never approves on the receipt's word
+        alone.
+        """
         if now.tzinfo is None:
             raise ValueError("now must be timezone-aware")
 
         seen = frozenset(seen_operation_ids)
         fields = extraction.field_map()
         checks: dict[str, bool] = {}
-        reasons: list[RejectReason] = []
+        reasons: list[VerdictReason] = []
 
-        def record(name: str, passed: bool, reason: RejectReason) -> None:
+        def record(name: str, passed: bool, reason: VerdictReason) -> None:
             checks[name] = passed
             if not passed and reason not in reasons:
                 reasons.append(reason)
@@ -130,8 +195,8 @@ class ReceiptValidator:
             if fields[name].value is not None
             and fields[name].confidence < self._policy.min_field_confidence
         ]
-        record("required_fields", not missing, RejectReason.MISSING_FIELD)
-        record("field_confidence", not low_confidence, RejectReason.LOW_CONFIDENCE)
+        record("required_fields", not missing, VerdictReason.MISSING_FIELD)
+        record("field_confidence", not low_confidence, VerdictReason.LOW_CONFIDENCE)
 
         untrusted = [
             str(fields[name].value)
@@ -141,7 +206,7 @@ class ReceiptValidator:
         untrusted.append(extraction.raw_text)
         haystack = normalize_untrusted_text(" \n ".join(untrusted))
         injected = any(pattern.search(haystack) for pattern in self._patterns)
-        record("no_prompt_injection", not injected, RejectReason.PROMPT_INJECTION)
+        record("no_prompt_injection", not injected, VerdictReason.PROMPT_INJECTION)
 
         amount = fields["amount"].value
         amount_detail = fields["amount_detail"].value
@@ -150,24 +215,45 @@ class ReceiptValidator:
             or amount_detail is None
             or quantize_amount(amount) == quantize_amount(amount_detail)
         )
-        record("amount_self_consistent", amounts_consistent, RejectReason.AMOUNT_MISMATCH)
-
-        amount_matches = amount is not None and quantize_amount(amount) == quantize_amount(
-            expectation.amount
-        )
-        record("amount_matches_expectation", amount_matches, RejectReason.AMOUNT_MISMATCH)
+        record("amount_self_consistent", amounts_consistent, VerdictReason.AMOUNT_MISMATCH)
 
         destination = fields["destination"].value
-        destination_allowed = destination is not None and destination.key in self._allowed
-        record("destination_allowed", destination_allowed, RejectReason.DESTINATION_MISMATCH)
-        destination_matches = (
-            destination is not None and destination.key == expectation.destination.key
-        )
-        record(
-            "destination_matches_expectation",
-            destination_matches,
-            RejectReason.DESTINATION_MISMATCH,
-        )
+        if destination is None:
+            # Same principle as the amount: an unreadable destination is missing, not
+            # disallowed, and `missing_field` already sends it to a human.
+            checks["destination_allowed"] = False
+        else:
+            record(
+                "destination_allowed",
+                destination.key in self._allowed,
+                VerdictReason.DESTINATION_MISMATCH,
+            )
+
+        if expectation is None:
+            checks["ledger_evidence"] = False
+            checks["amount_matches_expectation"] = False
+            checks["destination_matches_expectation"] = False
+            reasons.append(VerdictReason.UNVERIFIED_PAYMENT)
+        else:
+            checks["ledger_evidence"] = True
+            # An unreadable field is not a mismatch: `missing_field` already routes the
+            # receipt to a human, and calling it "amount_mismatch" would look like fraud.
+            if amount is None:
+                checks["amount_matches_expectation"] = False
+            else:
+                record(
+                    "amount_matches_expectation",
+                    quantize_amount(amount) == quantize_amount(expectation.amount),
+                    VerdictReason.AMOUNT_MISMATCH,
+                )
+            if destination is None:
+                checks["destination_matches_expectation"] = False
+            else:
+                record(
+                    "destination_matches_expectation",
+                    destination.key == expectation.destination.key,
+                    VerdictReason.DESTINATION_MISMATCH,
+                )
 
         transferred_at = fields["transferred_at"].value
         if transferred_at is None:
@@ -175,18 +261,25 @@ class ReceiptValidator:
         else:
             age = now - transferred_at
             if age > self._policy.max_receipt_age:
-                record("date_window", False, RejectReason.STALE_DATE)
+                record("date_window", False, VerdictReason.STALE_DATE)
             elif transferred_at - now > self._policy.max_future_skew:
-                record("date_window", False, RejectReason.FUTURE_DATE)
+                record("date_window", False, VerdictReason.FUTURE_DATE)
             else:
                 checks["date_window"] = True
 
         operation_id = fields["operation_id"].value
-        unique = operation_id is not None and operation_id not in seen
-        record("operation_id_unique", unique, RejectReason.DUPLICATE_OPERATION_ID)
+        if operation_id is None:
+            # A missing id is reported once, as a missing field: it cannot be a duplicate
+            # of anything, and a second reason would only add noise for the reviewer.
+            checks["operation_id_unique"] = False
+        else:
+            record(
+                "operation_id_unique",
+                operation_id not in seen,
+                VerdictReason.DUPLICATE_OPERATION_ID,
+            )
 
-        decision = Decision.REJECT if reasons else Decision.APPROVE
-        return ValidationResult(decision=decision, reasons=tuple(reasons), checks=checks)
+        return ValidationResult(decision=decide(reasons), reasons=tuple(reasons), checks=checks)
 
 
 def is_approved_amount(value: Decimal, expected: Decimal) -> bool:

@@ -17,6 +17,7 @@ from receipt_verifier.schema import (
 )
 from receipt_verifier.synthetic.generate import (
     ADVERSARIAL_ORDER,
+    DECISION_BY_KIND,
     DEFAULT_GENERATED_AT,
     DEFAULT_SEED,
     NORMAL_PER_ISSUER,
@@ -69,10 +70,14 @@ class TestComposition:
         adversarial = len(bundle.labels) - normal
         assert normal == len(Issuer)
         assert adversarial == len(ADVERSARIAL_ORDER) * len(Issuer)
-        assert bundle.manifest.counts == {
-            Decision.APPROVE.value: normal,
-            Decision.REJECT.value: adversarial,
-        }
+        expected_counts: dict[str, int] = {}
+        for label in bundle.labels:
+            expected_counts[label.expected_decision.value] = (
+                expected_counts.get(label.expected_decision.value, 0) + 1
+            )
+        assert bundle.manifest.counts == expected_counts
+        assert bundle.manifest.counts[Decision.APPROVE.value] == normal
+        assert bundle.manifest.counts[Decision.MANUAL_REVIEW.value] == len(Issuer)
 
     def test_every_issuer_is_represented(self, bundle: DatasetBundle) -> None:
         assert {label.issuer for label in bundle.labels} == set(Issuer)
@@ -82,8 +87,14 @@ class TestComposition:
             samples = [label for label in bundle.labels if label.adversarial is kind]
             assert len(samples) == len(Issuer)
             for label in samples:
-                assert label.expected_decision is Decision.REJECT
+                assert label.expected_decision is DECISION_BY_KIND[kind]
                 assert label.reasons == (REASON_BY_KIND[kind],)
+
+    def test_duplicates_are_the_only_manual_review_samples(self, bundle: DatasetBundle) -> None:
+        manual = [
+            label for label in bundle.labels if label.expected_decision is Decision.MANUAL_REVIEW
+        ]
+        assert {label.adversarial for label in manual} == {AdversarialKind.DUPLICATE_OPERATION_ID}
 
     def test_normal_samples_are_approved(self, bundle: DatasetBundle) -> None:
         normal = [label for label in bundle.labels if label.adversarial is AdversarialKind.NONE]
@@ -183,6 +194,16 @@ class TestRoundTrip:
         loaded = load_dataset(tmp_path)
         assert loaded.image_bytes(loaded.labels[0]).startswith(b"\x89PNG")
 
+    def test_shipped_real_slot_is_a_valid_empty_dataset(self) -> None:
+        real = Path(__file__).resolve().parents[1] / "dataset" / "real" / "anonymized"
+        if not (real / "manifest.json").is_file():
+            pytest.skip("no frozen real-data manifest in this checkout")
+        dataset = load_dataset(real)
+        assert dataset.labels == ()
+        assert dataset.manifest.version == "anonymized-v0"
+        assert dataset.manifest.sample_count == 0
+        assert dataset.allowed_destinations == frozenset()
+
     def test_folder_without_manifest_derives_one(self, tmp_path: Path) -> None:
         bundle = build_dataset(seed=7, normal_per_issuer=1)
         write_dataset(bundle, tmp_path)
@@ -206,7 +227,8 @@ class TestCommittedDataset:
         assert manifest.version == "v1"
         assert manifest.sample_count == len(dataset.labels)
         assert manifest.counts[Decision.APPROVE.value] == NORMAL_PER_ISSUER * len(Issuer)
-        assert manifest.counts[Decision.REJECT.value] == len(ADVERSARIAL_ORDER) * len(Issuer)
+        assert manifest.counts[Decision.REJECT.value] == (len(ADVERSARIAL_ORDER) - 1) * len(Issuer)
+        assert manifest.counts[Decision.MANUAL_REVIEW.value] == len(Issuer)
         assert manifest.adversarial_counts == {
             kind.value: len(Issuer) for kind in ADVERSARIAL_ORDER
         }

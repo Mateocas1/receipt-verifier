@@ -14,8 +14,9 @@ concurrency:
 
 jobs:
   test:
+    name: lint, types and tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       UV_FROZEN: "1"
     steps:
@@ -47,4 +48,40 @@ jobs:
             --dataset dataset/synthetic/v1 \
             --extractor dummy \
             --max-false-approvals 0 \
-            --json reports/ci-eval.json
+            --json reports/ci-eval-dummy.json
+
+  ocr:
+    name: local OCR on the synthetic set
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UV_FROZEN: "1"
+      OCR_TESSDATA: /usr/share/tesseract-ocr/5/tessdata
+      OCR_LANGUAGES: spa+eng
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install tesseract language data
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+
+      - name: Install the project with the OCR extra
+        run: uv sync --extra ocr
+
+      - name: OCR engine tests
+        run: uv run pytest -m ocr
+
+      - name: Evaluate the OCR extractor (false approvals must stay 0)
+        run: |
+          uv run python scripts/evaluate.py \
+            --dataset dataset/synthetic/v1 \
+            --extractor ocr \
+            --max-false-approvals 0 \
+            --json reports/ci-eval-ocr.json

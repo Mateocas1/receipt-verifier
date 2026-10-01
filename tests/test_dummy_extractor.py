@@ -5,7 +5,7 @@ import pytest
 from receipt_verifier.extraction import FIELD_NAMES
 from receipt_verifier.extractors.dummy import DummyExtractor, image_digest
 from receipt_verifier.metrics import evaluate_sample, expected_field_value, fields_match, is_covered
-from receipt_verifier.schema import ReceiptLabel
+from receipt_verifier.schema import Decision, ReceiptLabel
 from receipt_verifier.validate import ReceiptValidator
 from tests.helpers import ALIAS_DESTINATION, NOW, make_label
 
@@ -79,7 +79,8 @@ class TestNoise:
         validation = ReceiptValidator({ALIAS_DESTINATION.key}).validate(
             extraction, label.expectation, now=NOW
         )
-        assert validation.decision.value == "reject"
+        assert not validation.approved
+        assert validation.decision in (Decision.MANUAL_REVIEW, Decision.REJECT)
 
     def test_noise_is_seeded(self) -> None:
         first = build(noise=0.5, seed=7).extract(IMAGE)

@@ -16,7 +16,7 @@ from receipt_verifier.schema import (
     AR_TZ,
     AdversarialKind,
     Decision,
-    RejectReason,
+    VerdictReason,
 )
 from receipt_verifier.validate import ReceiptValidator
 from tests.helpers import CVU_DESTINATION, NOW, extraction_from, make_label
@@ -36,10 +36,13 @@ def outcome(
     return SampleOutcome(
         sample_id=sample_id,
         adversarial=adversarial,
+        extractor_used="stub",
         expected_decision=expected,
         predicted_decision=predicted,
-        expected_reasons=((RejectReason.AMOUNT_MISMATCH,) if expected is Decision.REJECT else ()),
-        predicted_reasons=((RejectReason.AMOUNT_MISMATCH,) if predicted is Decision.REJECT else ()),
+        expected_reasons=((VerdictReason.AMOUNT_MISMATCH,) if expected is Decision.REJECT else ()),
+        predicted_reasons=(
+            (VerdictReason.AMOUNT_MISMATCH,) if predicted is Decision.REJECT else ()
+        ),
         field_matches={name: name not in failed_fields for name in FIELD_NAMES},
         covered=covered,
         latency_ms=latency_ms,
@@ -151,6 +154,35 @@ class TestConfusionMetrics:
         assert metrics.adversarial_false_approval_rate is None
         assert format_rate(None) == "n/a"
 
+    def test_manual_review_counts_as_not_approved(self) -> None:
+        outcomes = (
+            outcome("a", expected=Decision.APPROVE, predicted=Decision.APPROVE),
+            outcome("b", expected=Decision.APPROVE, predicted=Decision.MANUAL_REVIEW),
+            outcome(
+                "c",
+                expected=Decision.MANUAL_REVIEW,
+                predicted=Decision.MANUAL_REVIEW,
+                adversarial=AdversarialKind.DUPLICATE_OPERATION_ID,
+            ),
+            outcome(
+                "d",
+                expected=Decision.REJECT,
+                predicted=Decision.APPROVE,
+                adversarial=AdversarialKind.EDITED_AMOUNT,
+            ),
+        )
+        metrics = compute_metrics(outcomes)
+        assert metrics.manual_reviews == 2
+        assert metrics.manual_review_rate == 0.5
+        assert metrics.approval_rate == 0.25
+        assert (metrics.approve_true_positives, metrics.approve_false_negatives) == (1, 1)
+        assert (metrics.approve_true_negatives, metrics.approve_false_positives) == (1, 1)
+        assert metrics.false_approvals == 1
+
+    def test_extractor_usage_is_tallied(self) -> None:
+        metrics = compute_metrics(TWO_BY_TWO)
+        assert metrics.extractor_usage == {"stub": 4}
+
     def test_no_predictions_means_undefined_precision(self) -> None:
         metrics = compute_metrics(
             (outcome("a", expected=Decision.APPROVE, predicted=Decision.REJECT),)
@@ -183,6 +215,19 @@ class TestFieldComparison:
     def test_missing_value_is_never_a_match(self) -> None:
         assert not fields_match("sender_bank", "Banco del Río", None)
         assert not fields_match("sender_bank", None, "Banco del Río")
+
+    def test_two_absences_are_a_match(self) -> None:
+        """No memo printed and no memo extracted agree; that is not a miss."""
+        assert fields_match("memo", "", None)
+        assert fields_match("memo", None, "")
+        assert not fields_match("memo", "", "alquiler")
+        assert not fields_match("memo", "alquiler", None)
+
+    def test_text_comparison_folds_accents(self) -> None:
+        assert fields_match("sender_name", "Sofía Ibáñez", "Sofia Ibanez")
+        assert fields_match("sender_bank", "Banco del Río", "banco del rio")
+        assert normalize_field_value("sender_name", "  Gómez  ") == "gomez"
+        assert not fields_match("sender_name", "Sofía Ibáñez", "Sofia Ibanezx")
 
     def test_unknown_types_fall_back_to_equality(self) -> None:
         assert normalize_field_value("weird", 3) == 3

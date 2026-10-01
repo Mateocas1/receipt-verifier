@@ -1,6 +1,22 @@
 """Receipt verifier: schema, synthetic dataset, extractors, validator and evaluation harness."""
 
 from receipt_verifier.builders import build_extraction
+from receipt_verifier.circuit import (
+    CircuitBreaker,
+    CircuitOpenError,
+    CircuitState,
+    CircuitStatus,
+    ExtractorTimeout,
+    GuardedExtractor,
+    run_with_timeout,
+    shutdown_executor,
+)
+from receipt_verifier.confidence import (
+    SourceQuality,
+    field_confidences,
+    score_extraction,
+    score_field,
+)
 from receipt_verifier.dataset import Dataset, DatasetBundle, load_dataset, write_dataset
 from receipt_verifier.extraction import (
     CRITICAL_FIELD_NAMES,
@@ -9,13 +25,25 @@ from receipt_verifier.extraction import (
     ExtractionResult,
     ReceiptExtractor,
 )
-from receipt_verifier.extractors.dummy import DummyExtractor
+from receipt_verifier.extractors import (
+    CascadeExhausted,
+    CascadeExtractor,
+    DummyExtractor,
+    LlmConfig,
+    OcrExtractor,
+    OcrUnavailable,
+    TesserocrEngine,
+    VisionLlmExtractor,
+    build_cascade,
+    default_extractor,
+)
 from receipt_verifier.harness import EvaluationReport, render_table, run_evaluation
 from receipt_verifier.identifiers import (
     cuit_check_digit,
     is_valid_cbu_or_cvu,
     is_valid_cuit,
     parse_amount_text,
+    parse_destination_text,
     render_amount_ars,
 )
 from receipt_verifier.metrics import Metrics, SampleOutcome, compute_metrics
@@ -29,13 +57,17 @@ from receipt_verifier.schema import (
     Issuer,
     LedgerEntry,
     ReceiptLabel,
-    RejectReason,
+    VerdictReason,
 )
 from receipt_verifier.validate import (
     DEFAULT_INJECTION_PATTERNS,
+    HARD_REJECT_REASONS,
+    ReasonSeverity,
     ReceiptValidator,
     ValidationPolicy,
     ValidationResult,
+    decide,
+    severity_of,
 )
 
 __all__ = [
@@ -43,7 +75,14 @@ __all__ = [
     "CRITICAL_FIELD_NAMES",
     "DEFAULT_INJECTION_PATTERNS",
     "FIELD_NAMES",
+    "HARD_REJECT_REASONS",
     "AdversarialKind",
+    "CascadeExhausted",
+    "CascadeExtractor",
+    "CircuitBreaker",
+    "CircuitOpenError",
+    "CircuitState",
+    "CircuitStatus",
     "Dataset",
     "DatasetBundle",
     "DatasetManifest",
@@ -54,25 +93,44 @@ __all__ = [
     "EvaluationReport",
     "ExtractedField",
     "ExtractionResult",
+    "ExtractorTimeout",
+    "GuardedExtractor",
     "Issuer",
     "LedgerEntry",
+    "LlmConfig",
     "Metrics",
+    "OcrExtractor",
+    "OcrUnavailable",
+    "ReasonSeverity",
     "ReceiptExtractor",
     "ReceiptLabel",
     "ReceiptValidator",
-    "RejectReason",
     "SampleOutcome",
+    "SourceQuality",
+    "TesserocrEngine",
     "ValidationPolicy",
     "ValidationResult",
+    "VerdictReason",
+    "VisionLlmExtractor",
+    "build_cascade",
     "build_extraction",
     "compute_metrics",
     "cuit_check_digit",
+    "decide",
+    "default_extractor",
+    "field_confidences",
     "is_valid_cbu_or_cvu",
     "is_valid_cuit",
     "load_dataset",
     "parse_amount_text",
+    "parse_destination_text",
     "render_amount_ars",
     "render_table",
     "run_evaluation",
+    "run_with_timeout",
+    "score_extraction",
+    "score_field",
+    "severity_of",
+    "shutdown_executor",
     "write_dataset",
 ]
