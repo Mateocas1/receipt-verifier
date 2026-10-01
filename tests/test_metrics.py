@@ -36,6 +36,7 @@ def outcome(
     return SampleOutcome(
         sample_id=sample_id,
         adversarial=adversarial,
+        extractor_used="stub",
         expected_decision=expected,
         predicted_decision=predicted,
         expected_reasons=((VerdictReason.AMOUNT_MISMATCH,) if expected is Decision.REJECT else ()),
@@ -177,6 +178,10 @@ class TestConfusionMetrics:
         assert (metrics.approve_true_positives, metrics.approve_false_negatives) == (1, 1)
         assert (metrics.approve_true_negatives, metrics.approve_false_positives) == (1, 1)
         assert metrics.false_approvals == 1
+
+    def test_extractor_usage_is_tallied(self) -> None:
+        metrics = compute_metrics(TWO_BY_TWO)
+        assert metrics.extractor_usage == {"stub": 4}
 
     def test_no_predictions_means_undefined_precision(self) -> None:
         metrics = compute_metrics(

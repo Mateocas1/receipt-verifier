@@ -138,6 +138,11 @@ def render_table(report: EvaluationReport) -> str:
             format_rate(metrics.adversarial_false_approval_rate),
         ),
         ("coverage", format_rate(metrics.coverage)),
+        (
+            "extractor usage",
+            ", ".join(f"{name}={count}" for name, count in sorted(metrics.extractor_usage.items()))
+            or "n/a",
+        ),
         ("latency mean ms", f"{metrics.latency_mean_ms:.2f}"),
         ("latency p50 ms", f"{metrics.latency_p50_ms:.2f}"),
         ("latency p95 ms", f"{metrics.latency_p95_ms:.2f}"),

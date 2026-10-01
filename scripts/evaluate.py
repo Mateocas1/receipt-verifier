@@ -1,6 +1,11 @@
 """Evaluate an extractor over a dataset and report the harness metrics.
 
-uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor dummy
+    uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor dummy
+    uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor ocr
+    uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor cascade
+
+``llm`` and ``cascade`` need provider credentials (LLM_API_KEY + VISION_MODEL_PRIMARY);
+without them the script says so instead of failing halfway through 150 receipts.
 """
 
 from __future__ import annotations
@@ -11,12 +16,14 @@ from pathlib import Path
 from typing import Final
 
 from receipt_verifier.dataset import load_dataset
+from receipt_verifier.extraction import ReceiptExtractor
 from receipt_verifier.extractors.dummy import DummyExtractor
 from receipt_verifier.harness import default_report_path, render_table, run_evaluation, write_report
 from receipt_verifier.schema import AR_TZ
 
 DEFAULT_DATASET: Final = Path("dataset/synthetic/v1")
-EXTRACTORS: Final = ("dummy",)
+LLM_MODEL_ENV: Final = "VISION_MODEL_PRIMARY"
+EXTRACTORS: Final = ("dummy", "ocr", "llm", "cascade")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -52,28 +59,52 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def build_extractor(args: argparse.Namespace) -> DummyExtractor:
-    if args.extractor != "dummy":
-        raise SystemExit(f"unknown extractor: {args.extractor}")
-    return DummyExtractor.from_dataset(args.dataset, noise=args.noise, seed=args.noise_seed)
+def build_extractor(args: argparse.Namespace) -> tuple[ReceiptExtractor, float]:
+    """Build the requested extractor, or explain what is missing."""
+    if args.extractor == "dummy":
+        extractor = DummyExtractor.from_dataset(
+            args.dataset, noise=args.noise, seed=args.noise_seed
+        )
+        return extractor, extractor.noise
+    if args.noise:
+        raise SystemExit("--noise only applies to the dummy extractor")
+    if args.extractor == "ocr":
+        from receipt_verifier.extractors.ocr import OcrUnavailable, default_extractor
+
+        try:
+            return default_extractor(), 0.0
+        except OcrUnavailable as exc:
+            raise SystemExit(
+                f"local OCR is unavailable: {exc}\n"
+                "install the extra (uv sync --extra ocr) and point OCR_TESSDATA at a "
+                "tessdata directory with eng/spa traineddata"
+            ) from exc
+    from receipt_verifier.service.settings import NoExtractorConfigured, Settings
+
+    settings = Settings.from_env()
+    if args.extractor == "llm" and not settings.llm.configured:
+        raise SystemExit(
+            "the LLM extractor needs LLM_API_KEY and VISION_MODEL_PRIMARY "
+            "(see the README); the comparison table in the README marks this row as "
+            "pending a key"
+        )
+    try:
+        return settings.build_extractor(), 0.0
+    except NoExtractorConfigured as exc:
+        raise SystemExit(f"no extractor is configured: {exc}") from exc
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     dataset = load_dataset(args.dataset)
-    extractor = build_extractor(args)
+    extractor, noise = build_extractor(args)
     now = datetime.fromisoformat(args.now).astimezone(AR_TZ) if args.now else None
 
-    report = run_evaluation(
-        dataset,
-        extractor,
-        now=now,
-        noise=extractor.noise,
-    )
+    report = run_evaluation(dataset, extractor, now=now, noise=noise)
     print(render_table(report))
 
     if not args.no_json:
-        json_path = args.json_path or default_report_path(extractor.name, extractor.noise)
+        json_path = args.json_path or default_report_path(extractor.name, noise)
         write_report(report, json_path)
         print(f"\njson report: {json_path}")
 

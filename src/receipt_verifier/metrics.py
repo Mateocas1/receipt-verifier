@@ -63,6 +63,7 @@ class SampleOutcome(BaseModel):
 
     sample_id: str
     adversarial: AdversarialKind
+    extractor_used: str
     expected_decision: Decision
     predicted_decision: Decision
     expected_reasons: tuple[VerdictReason, ...]
@@ -85,6 +86,7 @@ class Metrics(BaseModel):
 
     n: int
     per_field: tuple[FieldMetric, ...]
+    extractor_usage: dict[str, int] = {}
     approve_true_positives: int
     approve_false_positives: int
     approve_true_negatives: int
@@ -225,6 +227,7 @@ def evaluate_sample(
     return SampleOutcome(
         sample_id=label.sample_id,
         adversarial=label.adversarial,
+        extractor_used=extraction.extractor,
         expected_decision=label.expected_decision,
         predicted_decision=validation.decision,
         expected_reasons=label.reasons,
@@ -283,9 +286,13 @@ def compute_metrics(outcomes: tuple[SampleOutcome, ...]) -> Metrics:
         for name in FIELD_NAMES
     )
     covered = sum(1 for o in outcomes if o.covered)
+    usage: dict[str, int] = {}
+    for record in outcomes:
+        usage[record.extractor_used] = usage.get(record.extractor_used, 0) + 1
     return Metrics(
         n=len(outcomes),
         per_field=per_field,
+        extractor_usage=usage,
         approve_true_positives=true_positives,
         approve_false_positives=false_positives,
         approve_true_negatives=true_negatives,
