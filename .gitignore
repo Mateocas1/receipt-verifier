@@ -1,0 +1,29 @@
+# Local Pi runtime state
+.atl/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Evaluation outputs
+reports/
+
+# --- Real receipts: originals are never committed -----------------------------
+# Everything under dataset/real is ignored except the README and the anonymized
+# folder, which itself must only ever hold de-identified samples.
+dataset/real/*
+!dataset/real/README.md
+!dataset/real/anonymized/
+!dataset/real/anonymized/**
+dataset/real/anonymized/originals/
+dataset/real/anonymized/**/*.pdf
+dataset/real/anonymized/**/*.heic
+dataset/real/anonymized/**/*.original.*

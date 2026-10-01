@@ -1,0 +1,20 @@
+{
+  "name": "synthetic",
+  "version": "v1",
+  "seed": 20250701,
+  "generated_at": "2025-07-01T09:00:00-03:00",
+  "evaluation_at": "2025-07-01T09:00:00-03:00",
+  "max_receipt_age_seconds": 604800,
+  "sample_count": 150,
+  "counts": {
+    "approve": 120,
+    "reject": 30
+  },
+  "adversarial_counts": {
+    "edited_amount": 6,
+    "wrong_destination": 6,
+    "duplicate_operation_id": 6,
+    "injected_instruction": 6,
+    "stale_date": 6
+  }
+}
