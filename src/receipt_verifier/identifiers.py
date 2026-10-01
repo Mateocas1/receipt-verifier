@@ -137,8 +137,9 @@ def parse_destination_text(text: str) -> tuple[str, str] | None:
     head, _, tail = cleaned.partition(" ")
     kind = head.strip().lower()
     if kind in _DESTINATION_KINDS and tail.strip():
-        return kind, tail.strip().split()[0].strip(",.;")
-    token = cleaned.split()[0].strip(",.;")
+        # OCR happily splits "2852 240785731632146398" or "camila .ojeda.pago".
+        return kind, "".join(tail.split()).strip(",.;")
+    token = "".join(cleaned.split()).strip(",.;")
     if is_valid_cbu_or_cvu(token):
         return "cvu", token
     return ("alias", token) if is_valid_alias(token) else None
