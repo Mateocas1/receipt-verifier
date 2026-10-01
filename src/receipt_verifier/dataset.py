@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from receipt_verifier.schema import DatasetManifest, ReceiptLabel
+from receipt_verifier.schema import AR_TZ, AdversarialKind, DatasetManifest, ReceiptLabel
 
 LABELS_FILENAME = "labels.jsonl"
 MANIFEST_FILENAME = "manifest.json"
 IMAGES_DIRNAME = "images"
+DEFAULT_MAX_RECEIPT_AGE = timedelta(days=7)
 
 
 @dataclass(frozen=True)
@@ -63,11 +64,48 @@ def write_dataset(bundle: DatasetBundle, root: Path) -> None:
     (root / MANIFEST_FILENAME).write_text(manifest_text, encoding="utf-8")
 
 
-def load_dataset(root: Path) -> Dataset:
-    """Load a dataset directory written by :func:`write_dataset`."""
-    manifest = DatasetManifest.model_validate_json(
-        (root / MANIFEST_FILENAME).read_text(encoding="utf-8")
+def derive_manifest(
+    root: Path, labels: tuple[ReceiptLabel, ...], *, now: datetime
+) -> DatasetManifest:
+    """Build a manifest for a folder that does not ship one (hand-curated real data).
+
+    The evaluation clock is the wall clock: a real receipt must be judged against the
+    moment it is verified, not against the moment the folder was assembled.
+    """
+    counts: dict[str, int] = {}
+    adversarial_counts: dict[str, int] = {}
+    for label in labels:
+        counts[label.expected_decision.value] = counts.get(label.expected_decision.value, 0) + 1
+        if label.adversarial is not AdversarialKind.NONE:
+            adversarial_counts[label.adversarial.value] = (
+                adversarial_counts.get(label.adversarial.value, 0) + 1
+            )
+    return DatasetManifest(
+        name=root.name or "dataset",
+        version="unversioned",
+        seed=0,
+        generated_at=now,
+        evaluation_at=now,
+        max_receipt_age_seconds=int(DEFAULT_MAX_RECEIPT_AGE.total_seconds()),
+        sample_count=len(labels),
+        counts=counts,
+        adversarial_counts=adversarial_counts,
     )
+
+
+def load_dataset(root: Path, *, now: datetime | None = None) -> Dataset:
+    """Load a dataset directory written by :func:`write_dataset`.
+
+    A folder without ``manifest.json`` is accepted: the manifest is derived from the
+    labels and the current instant, which is how locally curated (real, anonymized)
+    samples are evaluated.
+    """
     raw_lines = (root / LABELS_FILENAME).read_text(encoding="utf-8").splitlines()
     labels = tuple(ReceiptLabel.model_validate_json(line) for line in raw_lines if line.strip())
+    manifest_path = root / MANIFEST_FILENAME
+    if manifest_path.is_file():
+        manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    else:
+        reference = now if now is not None else datetime.now(tz=AR_TZ)
+        manifest = derive_manifest(root, labels, now=reference)
     return Dataset(root=root, manifest=manifest, labels=labels)

@@ -183,6 +183,19 @@ class TestRoundTrip:
         loaded = load_dataset(tmp_path)
         assert loaded.image_bytes(loaded.labels[0]).startswith(b"\x89PNG")
 
+    def test_folder_without_manifest_derives_one(self, tmp_path: Path) -> None:
+        bundle = build_dataset(seed=7, normal_per_issuer=1)
+        write_dataset(bundle, tmp_path)
+        (tmp_path / "manifest.json").unlink()
+        clock = datetime(2025, 9, 1, 12, 0, tzinfo=AR_TZ)
+        loaded = load_dataset(tmp_path, now=clock)
+        assert loaded.manifest.version == "unversioned"
+        assert loaded.manifest.evaluation_at == clock
+        assert loaded.manifest.seed == 0
+        assert loaded.manifest.sample_count == len(bundle.labels)
+        assert loaded.manifest.counts == bundle.manifest.counts
+        assert loaded.manifest.adversarial_counts == bundle.manifest.adversarial_counts
+
 
 @pytest.mark.skipif(not COMMITTED_DATASET.exists(), reason="committed dataset not present")
 class TestCommittedDataset:

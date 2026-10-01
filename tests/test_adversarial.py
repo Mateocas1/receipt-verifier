@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ import pytest
 from receipt_verifier.dataset import Dataset, load_dataset, write_dataset
 from receipt_verifier.extractors.dummy import DummyExtractor
 from receipt_verifier.harness import EvaluationReport, run_evaluation
-from receipt_verifier.schema import AdversarialKind, Decision
+from receipt_verifier.schema import AR_TZ, AdversarialKind, Decision
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMMITTED_DATASET = REPO_ROOT / "dataset" / "synthetic" / "v1"
@@ -134,6 +135,22 @@ class TestCommittedDatasetGate:
     ) -> None:
         dataset = load_dataset(COMMITTED_DATASET)
         assert committed_report.evaluation_at == dataset.manifest.evaluation_at
+
+
+class TestManifestlessFolder:
+    """Hand-curated (real, anonymized) folders ship no manifest: the clock is now."""
+
+    def test_manifestless_folder_evaluates(self, tmp_path: Path) -> None:
+        from receipt_verifier.synthetic.generate import build_dataset
+
+        write_dataset(build_dataset(seed=5, normal_per_issuer=1), tmp_path)
+        (tmp_path / "manifest.json").unlink()
+        dataset = load_dataset(tmp_path, now=datetime(2025, 7, 1, 9, 0, tzinfo=AR_TZ))
+        extractor = DummyExtractor.from_dataset(tmp_path)
+        report = run_evaluation(dataset, extractor)
+        assert report.metrics.n == dataset.manifest.sample_count
+        assert report.evaluation_at == dataset.manifest.evaluation_at
+        assert report.metrics.false_approvals == 0
 
 
 @pytest.mark.skipif(not COMMITTED_DATASET.exists(), reason="committed dataset not present")

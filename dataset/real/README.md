@@ -51,6 +51,7 @@ This folder is reserved for **anonymized** real receipts. Nothing else belongs h
 ```
 dataset/real/anonymized/
 ├── labels.jsonl          # one ReceiptLabel JSON object per line
+├── manifest.json         # optional; derived automatically when absent
 └── images/
     ├── real-0001.png
     └── real-0002.png
@@ -69,6 +70,10 @@ dataset/real/anonymized/
    The dummy extractor reads `labels.jsonl`, so this checks the labels, the validator and the
    harness wiring. Evaluate a real extractor by wiring a new `ReceiptExtractor`
    implementation into `scripts/evaluate.py`.
+
+   Without a `manifest.json` the loader derives one on the fly and uses the **wall clock** as
+   the evaluation clock (a real receipt must be judged against the moment it is verified). Add
+   a `manifest.json` only when you need a frozen, reproducible clock.
 4. Sanity-check the diff for leaked strings before committing:
 
    ```bash
