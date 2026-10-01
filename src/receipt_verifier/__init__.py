@@ -8,6 +8,7 @@ from receipt_verifier.extraction import (
     ExtractionResult,
     ReceiptExtractor,
 )
+from receipt_verifier.extractors.dummy import DummyExtractor
 from receipt_verifier.identifiers import (
     cuit_check_digit,
     is_valid_cbu_or_cvu,
@@ -15,6 +16,7 @@ from receipt_verifier.identifiers import (
     parse_amount_text,
     render_amount_ars,
 )
+from receipt_verifier.metrics import Metrics, SampleOutcome, compute_metrics
 from receipt_verifier.schema import (
     AR_TZ,
     AdversarialKind,
@@ -46,17 +48,21 @@ __all__ = [
     "Decision",
     "Destination",
     "DestinationKind",
+    "DummyExtractor",
     "ExtractedField",
     "ExtractionResult",
     "Issuer",
     "LedgerEntry",
+    "Metrics",
     "ReceiptExtractor",
     "ReceiptLabel",
     "ReceiptValidator",
     "RejectReason",
+    "SampleOutcome",
     "ValidationPolicy",
     "ValidationResult",
     "build_extraction",
+    "compute_metrics",
     "cuit_check_digit",
     "is_valid_cbu_or_cvu",
     "is_valid_cuit",
