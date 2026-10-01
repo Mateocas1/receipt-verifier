@@ -120,6 +120,29 @@ def render_amount_ars(value: Decimal) -> str:
 
 _AMOUNT_TOKEN_RE: Final = re.compile(r"^-?\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?$|^-?\d+(?:,\d{1,2})?$")
 
+_DESTINATION_KINDS: Final = frozenset({"alias", "cvu", "cbu"})
+
+
+def parse_destination_text(text: str) -> tuple[str, str] | None:
+    """Parse a destination as printed on a receipt: ``ALIAS name`` / ``CVU 2852...``.
+
+    Also accepts a bare alias or a bare 22-digit CBU/CVU. Returns
+    ``(kind_value, value)`` (``kind_value`` in ``alias``/``cvu``/``cbu``) or ``None`` when
+    the text holds no destination. Kept free of schema imports so the schema itself can
+    use this module.
+    """
+    cleaned = text.strip().strip(":").strip()
+    if not cleaned:
+        return None
+    head, _, tail = cleaned.partition(" ")
+    kind = head.strip().lower()
+    if kind in _DESTINATION_KINDS and tail.strip():
+        return kind, tail.strip().split()[0].strip(",.;")
+    token = cleaned.split()[0].strip(",.;")
+    if is_valid_cbu_or_cvu(token):
+        return "cvu", token
+    return ("alias", token) if is_valid_alias(token) else None
+
 
 def parse_amount_text(text: str) -> Decimal | None:
     """Parse an Argentine-formatted amount such as ``$ 25.000,00`` back into a Decimal.

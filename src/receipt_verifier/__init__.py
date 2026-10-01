@@ -1,6 +1,12 @@
 """Receipt verifier: schema, synthetic dataset, extractors, validator and evaluation harness."""
 
 from receipt_verifier.builders import build_extraction
+from receipt_verifier.confidence import (
+    SourceQuality,
+    field_confidences,
+    score_extraction,
+    score_field,
+)
 from receipt_verifier.dataset import Dataset, DatasetBundle, load_dataset, write_dataset
 from receipt_verifier.extraction import (
     CRITICAL_FIELD_NAMES,
@@ -16,6 +22,7 @@ from receipt_verifier.identifiers import (
     is_valid_cbu_or_cvu,
     is_valid_cuit,
     parse_amount_text,
+    parse_destination_text,
     render_amount_ars,
 )
 from receipt_verifier.metrics import Metrics, SampleOutcome, compute_metrics
@@ -33,9 +40,13 @@ from receipt_verifier.schema import (
 )
 from receipt_verifier.validate import (
     DEFAULT_INJECTION_PATTERNS,
+    HARD_REJECT_REASONS,
+    ReasonSeverity,
     ReceiptValidator,
     ValidationPolicy,
     ValidationResult,
+    decide,
+    severity_of,
 )
 
 __all__ = [
@@ -43,6 +54,7 @@ __all__ = [
     "CRITICAL_FIELD_NAMES",
     "DEFAULT_INJECTION_PATTERNS",
     "FIELD_NAMES",
+    "HARD_REJECT_REASONS",
     "AdversarialKind",
     "Dataset",
     "DatasetBundle",
@@ -57,22 +69,30 @@ __all__ = [
     "Issuer",
     "LedgerEntry",
     "Metrics",
+    "ReasonSeverity",
     "ReceiptExtractor",
     "ReceiptLabel",
     "ReceiptValidator",
     "SampleOutcome",
+    "SourceQuality",
     "ValidationPolicy",
     "ValidationResult",
     "VerdictReason",
     "build_extraction",
     "compute_metrics",
     "cuit_check_digit",
+    "decide",
+    "field_confidences",
     "is_valid_cbu_or_cvu",
     "is_valid_cuit",
     "load_dataset",
     "parse_amount_text",
+    "parse_destination_text",
     "render_amount_ars",
     "render_table",
     "run_evaluation",
+    "score_extraction",
+    "score_field",
+    "severity_of",
     "write_dataset",
 ]
