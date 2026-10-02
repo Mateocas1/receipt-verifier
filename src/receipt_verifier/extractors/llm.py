@@ -69,6 +69,19 @@ class LlmChoiceMessage(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     content: str | None = None
+    reasoning_content: str | None = None
+
+    @property
+    def text(self) -> str:
+        """The assistant's answer, tolerating models that emit only reasoning.
+
+        Some OpenAI-compatible reasoning models return ``content: null`` and put the
+        whole answer in ``reasoning_content``; ignoring that would look like an empty
+        answer and be misreported as a broken extractor.
+        """
+        if self.content and self.content.strip():
+            return self.content
+        return self.reasoning_content or ""
 
 
 class LlmChoice(BaseModel):
@@ -275,6 +288,8 @@ class HttpLlmTransport:
                 return response.json()
             except LlmRateLimitError:
                 raise
+            except httpx.HTTPStatusError as exc:
+                raise LlmTransportError(_status_error_message(exc)) from exc
             except Exception as exc:  # transport-level failure: the cascade moves on
                 raise LlmTransportError(str(exc)) from exc
 
@@ -311,12 +326,12 @@ class HttpLlmTransport:
         raw_body = self._post(payload, timeout_seconds)
         try:
             body = LlmResponse.model_validate(raw_body)
-            message = body.choices[0].message.content
+            message = body.choices[0].message.text
         except (ValidationError, IndexError) as exc:
             raise LlmResponseError(f"unexpected provider payload: {exc}") from exc
         usage = body.usage or LlmUsage()
         return LlmCompletion(
-            text=message or "",
+            text=message,
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
         )
@@ -330,6 +345,16 @@ def build_http_client(config: LlmConfig) -> httpx.Client:
         timeout=config.timeout_seconds,
     )
     return client
+
+
+_STATUS_BODY_LIMIT: Final = 400
+
+
+def _status_error_message(exc: httpx.HTTPStatusError) -> str:
+    """A transport error that keeps the provider's explanation (never the key)."""
+    status = exc.response.status_code
+    body = exc.response.text.strip().replace("\n", " ")[:_STATUS_BODY_LIMIT]
+    return f"HTTP {status}: {body}" if body else f"HTTP {status}: {exc}"
 
 
 def parse_payload(text: str) -> LlmReceiptPayload:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from receipt_verifier.extractors.llm import LlmCompletion, LlmTransportError
+from receipt_verifier.extractors.llm import SYSTEM_PROMPT, LlmCompletion, LlmTransportError
 from receipt_verifier.vision_probe import (
     NON_CHAT_MODELS,
     PROBE_MARKER,
@@ -106,6 +106,15 @@ class TestRunProbe:
         assert transport.calls[0]["model"] == "gemma4"
         assert transport.calls[0]["media_type"] == "image/png"
         assert transport.calls[0]["image_base64"]
+
+    def test_probe_uses_the_real_extraction_prompt(self) -> None:
+        transport = AnsweringTransport('{"amount": "25.000,00"}')
+        probe = run_vision_probe(
+            model="qwen3.6", transport=transport, image=build_probe_image(), timeout_seconds=30.0
+        )
+        assert probe.vision is True
+        assert transport.calls[0]["system"] == SYSTEM_PROMPT
+        assert "JSON" in str(transport.calls[0]["prompt"])
 
     def test_refusal_is_recorded_not_raised(self) -> None:
         probe = run_vision_probe(

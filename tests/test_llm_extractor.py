@@ -269,10 +269,12 @@ class RateLimitedResponse:
         *,
         body: dict[str, object] | None = None,
         headers: dict[str, str] | None = None,
+        text: str | None = None,
     ) -> None:
         self.status_code = status_code
         self.headers = headers or {}
         self._body = body or {}
+        self.text = text if text is not None else json.dumps(self._body)
 
     def json(self) -> dict[str, object]:
         return self._body
@@ -281,7 +283,7 @@ class RateLimitedResponse:
         if self.status_code < 400:
             return
         request = httpx.Request("POST", "https://example.test/v1/chat/completions")
-        response = httpx.Response(self.status_code, request=request)
+        response = httpx.Response(self.status_code, request=request, text=self.text)
         raise httpx.HTTPStatusError("boom", request=request, response=response)
 
 
@@ -378,3 +380,36 @@ class TestHttpTransportRateLimits:
         transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client)
         with pytest.raises(LlmTransportError):
             call_transport(transport)
+
+    def test_provider_error_body_is_reported(self) -> None:
+        body = '{"error": {"message": "response_format requires the word JSON in the prompt"}}'
+        client = ScriptedHttpClient(RateLimitedResponse(400, text=body))
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client)
+        with pytest.raises(LlmTransportError, match="requires the word JSON"):
+            call_transport(transport)
+
+    def test_reasoning_only_answer_is_used(self) -> None:
+        body: dict[str, object] = {
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "reasoning_content": json.dumps(PAYLOAD),
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 7, "completion_tokens": 3},
+        }
+        client = ScriptedHttpClient(RateLimitedResponse(200, body=body))
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client)
+        completion = call_transport(transport)
+        assert json.loads(completion.text)["operation_id"] == PAYLOAD["operation_id"]
+        assert completion.completion_tokens == 3
+
+    def test_blank_content_falls_back_to_reasoning(self) -> None:
+        body: dict[str, object] = {
+            "choices": [{"message": {"content": "   ", "reasoning_content": "25000"}}]
+        }
+        client = ScriptedHttpClient(RateLimitedResponse(200, body=body))
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client)
+        assert call_transport(transport).text == "25000"

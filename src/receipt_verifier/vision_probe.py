@@ -17,7 +17,12 @@ from time import perf_counter
 
 from PIL import Image, ImageDraw, ImageFont
 
-from receipt_verifier.extractors.llm import LlmTransport, LlmTransportError, media_type_of
+from receipt_verifier.extractors.llm import (
+    SYSTEM_PROMPT,
+    LlmTransport,
+    LlmTransportError,
+    media_type_of,
+)
 
 PROBE_TEXT: str = "TOTAL 25.000,00"
 """One unmistakable amount for the model to read back."""
@@ -26,8 +31,10 @@ PROBE_MARKER: str = "25000"
 """Digits the answer must contain to count as "this model can see the image"."""
 
 PROBE_PROMPT: str = (
-    "Read the amount printed in this image. Reply with the digits only, no punctuation."
+    "Extract the fields from this image. Only the headline amount is printed; every "
+    "other field is unreadable. Reply with a single JSON object."
 )
+"""The probe asks for the real extraction shape, so its verdict measures the real use."""
 
 NON_CHAT_MODELS: dict[str, str] = {
     "rerank": "reranking endpoint, not a chat model",
@@ -114,7 +121,7 @@ def run_vision_probe(
     try:
         completion = transport.complete(
             model=model,
-            system="You read numbers from images. Answer with the digits only.",
+            system=SYSTEM_PROMPT,
             prompt=PROBE_PROMPT,
             image_base64=base64.b64encode(image).decode("ascii"),
             media_type=media_type_of(image),
