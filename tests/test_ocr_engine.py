@@ -18,10 +18,12 @@ from receipt_verifier.extractors.ocr import (
     default_extractor,
     discover_tessdata,
 )
+from receipt_verifier.replay import receipt_hash
 from receipt_verifier.schema import AdversarialKind, Decision
 from receipt_verifier.validate import ReceiptValidator, ValidationPolicy
 
-COMMITTED_DATASET = Path(__file__).resolve().parents[1] / "dataset" / "synthetic" / "v1"
+SYNTHETIC_ROOT = Path(__file__).resolve().parents[1] / "dataset" / "synthetic"
+COMMITTED_DATASETS = (SYNTHETIC_ROOT / "v1", SYNTHETIC_ROOT / "v2")
 
 tesserocr = pytest.importorskip("tesserocr", reason="install the 'ocr' extra to run OCR tests")
 pytestmark = pytest.mark.ocr
@@ -38,9 +40,9 @@ def engine() -> TesserocrEngine:
     return TesserocrEngine()
 
 
-@pytest.fixture(scope="module")
-def dataset() -> object:
-    return load_dataset(COMMITTED_DATASET)
+@pytest.fixture(scope="module", params=COMMITTED_DATASETS, ids=["v1", "v2"])
+def dataset(request: pytest.FixtureRequest) -> object:
+    return load_dataset(request.param)
 
 
 class TestEngineWiring:
@@ -88,15 +90,21 @@ class TestRealReceipts:
         """Acceptance criterion: the local OCR path never approves a forged receipt."""
         extractor = default_extractor()
         validator = ReceiptValidator(dataset.allowed_destinations, ValidationPolicy())
-        seen: set[str] = set()
+        seen: dict[str, str] = {}
         decisions: dict[AdversarialKind, set[Decision]] = {}
         for label in dataset.labels:
-            extraction = extractor.extract(dataset.image_bytes(label))
+            image = dataset.image_bytes(label)
+            image_hash = receipt_hash(image)
+            extraction = extractor.extract(image)
             result = validator.validate(
-                extraction, label.expectation, now=dataset.evaluation_at, seen_operation_ids=seen
+                extraction,
+                label.expectation,
+                now=dataset.evaluation_at,
+                seen_operation_ids=seen,
+                receipt_hash=image_hash,
             )
-            if result.approved and extraction.operation_id.value:
-                seen.add(extraction.operation_id.value)
+            if extraction.operation_id.value is not None:
+                seen.setdefault(extraction.operation_id.value, image_hash)
             if label.adversarial is not AdversarialKind.NONE:
                 decisions.setdefault(label.adversarial, set()).add(result.decision)
         assert decisions, "the adversarial set must not be empty"

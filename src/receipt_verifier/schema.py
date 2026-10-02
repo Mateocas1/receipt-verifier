@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import PurePosixPath
-from typing import Annotated, Self
+from typing import Annotated, Final, Self
 from zoneinfo import ZoneInfo
 
 from pydantic import (
@@ -46,6 +46,52 @@ class Issuer(StrEnum):
     BNA = "bna"
 
 
+ISSUER_DISPLAY_NAMES: Final[dict[Issuer, str]] = {
+    Issuer.MP: "Billetera Alfa",
+    Issuer.UALA: "Billetera Beta",
+    Issuer.BRUBANK: "Banco Digital Gamma",
+    Issuer.GALICIA: "Banco Delta",
+    Issuer.SANTANDER: "Banco Epsilon",
+    Issuer.BNA: "Banco Publico Zeta",
+}
+"""The published name the synthetic renderer prints for each issuer.
+
+The names are generic and trademark-free — the fixtures must never look like a real
+bank's document — but they are a stable, 1:1 mapping onto :class:`Issuer`, so anything
+that can read the header (a model, a parser, a person) can recover the issuer code. This
+dictionary is the only place the mapping lives; the renderer, the OCR reader and the
+extraction prompt all derive from it.
+"""
+
+ISSUER_CODE_BY_DISPLAY_NAME: Final[dict[str, Issuer]] = {
+    name.casefold(): issuer for issuer, name in ISSUER_DISPLAY_NAMES.items()
+}
+
+LEGACY_DISPLAY_NAMES_V1: Final[dict[Issuer, str]] = {
+    Issuer.MP: "Billetera A",
+    Issuer.UALA: "Billetera B",
+    Issuer.BRUBANK: "Banco Digital C",
+    Issuer.GALICIA: "Banco D",
+    Issuer.SANTANDER: "Banco E",
+    Issuer.BNA: "Banco Público F",
+}
+"""Frozen: the names `dataset/synthetic/v1` was rendered with.
+
+They are kept so `--version v1` still reproduces the committed images byte for byte.
+Nothing else should use them.
+"""
+
+
+def display_names_for_version(version: str) -> dict[Issuer, str]:
+    """Name table for a dataset version: v1 keeps its frozen names, later versions publish."""
+    return LEGACY_DISPLAY_NAMES_V1 if version == "v1" else ISSUER_DISPLAY_NAMES
+
+
+def issuer_for_display_name(text: str) -> Issuer | None:
+    """Issuer code for a printed display name, or ``None`` when it is not a known one."""
+    return ISSUER_CODE_BY_DISPLAY_NAME.get(" ".join(text.split()).casefold())
+
+
 class Decision(StrEnum):
     """Verifier verdict. ``MANUAL_REVIEW`` means a human must decide: the code could not
     establish a confident approve and found no hard violation either."""
@@ -66,6 +112,7 @@ class VerdictReason(StrEnum):
     AMOUNT_MISMATCH = "amount_mismatch"
     DESTINATION_MISMATCH = "destination_mismatch"
     DUPLICATE_OPERATION_ID = "duplicate_operation_id"
+    IDENTICAL_RECEIPT_REPLAY = "identical_receipt_replay"
     STALE_DATE = "stale_date"
     FUTURE_DATE = "future_date"
     PROMPT_INJECTION = "prompt_injection"

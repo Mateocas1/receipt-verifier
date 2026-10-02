@@ -1,5 +1,6 @@
 """HTTP service: configuration, image intake, API models and the FastAPI app."""
 
+from receipt_verifier.replay import SeenOperationIds
 from receipt_verifier.service.app import SERVICE_NAME, SERVICE_VERSION, create_app
 from receipt_verifier.service.imaging import (
     SUPPORTED_MEDIA_TYPES,
@@ -11,7 +12,6 @@ from receipt_verifier.service.imaging import (
     sniff_media_type,
     validate_image,
 )
-from receipt_verifier.service.registry import SeenOperationIds
 from receipt_verifier.service.schemas import (
     DestinationInput,
     PaymentInput,

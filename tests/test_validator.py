@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -43,7 +43,7 @@ def validate(
     label: ReceiptLabel,
     extraction: ExtractionResult | None = None,
     *,
-    seen_operation_ids: Iterable[str] = (),
+    seen_operation_ids: Mapping[str, str] | None = None,
 ) -> ValidationResult:
     return validator.validate(
         extraction if extraction is not None else extraction_from(label),
@@ -160,7 +160,9 @@ class TestOperationId:
         self, validator: ReceiptValidator
     ) -> None:
         label = make_label(operation_id="MP-DUPLICATED")
-        result = validate(validator, label, seen_operation_ids={"MP-DUPLICATED"})
+        result = validate(
+            validator, label, seen_operation_ids={"MP-DUPLICATED": "a-different-image"}
+        )
         assert result.decision is Decision.MANUAL_REVIEW
         assert result.reasons == (VerdictReason.DUPLICATE_OPERATION_ID,)
         assert result.review_reasons == (VerdictReason.DUPLICATE_OPERATION_ID,)
@@ -173,13 +175,17 @@ class TestOperationId:
         """One reason is enough: a receipt with no id is missing a field, not a replay."""
         label = make_label()
         extraction = extraction_from(label, operation_id=None)
-        result = validate(validator, label, extraction, seen_operation_ids={"MP-ANY"})
+        result = validate(
+            validator, label, extraction, seen_operation_ids={"MP-ANY": "a-different-image"}
+        )
         assert result.reasons == (VerdictReason.MISSING_FIELD,)
         assert result.checks["operation_id_unique"] is False
 
     def test_unseen_operation_id_is_accepted(self, validator: ReceiptValidator) -> None:
         label = make_label(operation_id="MP-FRESH")
-        assert validate(validator, label, seen_operation_ids={"MP-OTHER"}).approved
+        assert validate(
+            validator, label, seen_operation_ids={"MP-OTHER": "a-different-image"}
+        ).approved
 
 
 class TestPromptInjection:
@@ -332,7 +338,9 @@ class TestSeverityRouting:
             reasons=(VerdictReason.AMOUNT_MISMATCH,),
             adversarial=AdversarialKind.EDITED_AMOUNT,
         )
-        result = validate(validator, label, seen_operation_ids={"MP-DUPLICATED"})
+        result = validate(
+            validator, label, seen_operation_ids={"MP-DUPLICATED": "a-different-image"}
+        )
         assert result.decision is Decision.REJECT
         assert set(result.reasons) == {
             VerdictReason.AMOUNT_MISMATCH,

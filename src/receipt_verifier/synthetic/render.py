@@ -10,6 +10,7 @@ for evidence.
 from __future__ import annotations
 
 import io
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from functools import cache
@@ -19,7 +20,12 @@ from typing import Final, Literal
 from PIL import Image, ImageDraw, ImageFont
 
 from receipt_verifier.identifiers import render_amount_ars
-from receipt_verifier.schema import AR_TZ, Issuer, ReceiptLabel
+from receipt_verifier.schema import (
+    AR_TZ,
+    ISSUER_DISPLAY_NAMES,
+    Issuer,
+    ReceiptLabel,
+)
 
 type RGB = tuple[int, int, int]
 type FontType = ImageFont.FreeTypeFont | ImageFont.ImageFont
@@ -60,7 +66,6 @@ class IssuerStyle:
     """Everything that makes one issuer's receipt layout visually distinct."""
 
     issuer: Issuer
-    display_name: str
     document_label: str
     amount_label: str
     detail_label: str
@@ -84,7 +89,6 @@ class IssuerStyle:
 STYLES: Final[dict[Issuer, IssuerStyle]] = {
     Issuer.MP: IssuerStyle(
         issuer=Issuer.MP,
-        display_name="Billetera A",
         document_label="Comprobante de transferencia",
         amount_label="Importe transferido",
         detail_label="Detalle del importe",
@@ -100,7 +104,6 @@ STYLES: Final[dict[Issuer, IssuerStyle]] = {
     ),
     Issuer.UALA: IssuerStyle(
         issuer=Issuer.UALA,
-        display_name="Billetera B",
         document_label="Transferencia enviada",
         amount_label="Monto",
         detail_label="Total debitado",
@@ -116,7 +119,6 @@ STYLES: Final[dict[Issuer, IssuerStyle]] = {
     ),
     Issuer.BRUBANK: IssuerStyle(
         issuer=Issuer.BRUBANK,
-        display_name="Banco Digital C",
         document_label="Constancia de transferencia",
         amount_label="Importe",
         detail_label="Importe acreditado",
@@ -132,7 +134,6 @@ STYLES: Final[dict[Issuer, IssuerStyle]] = {
     ),
     Issuer.GALICIA: IssuerStyle(
         issuer=Issuer.GALICIA,
-        display_name="Banco D",
         document_label="Comprobante de transferencia inmediata",
         amount_label="Importe de la operación",
         detail_label="Importe informado",
@@ -148,7 +149,6 @@ STYLES: Final[dict[Issuer, IssuerStyle]] = {
     ),
     Issuer.SANTANDER: IssuerStyle(
         issuer=Issuer.SANTANDER,
-        display_name="Banco E",
         document_label="Comprobante de operación",
         amount_label="Monto transferido",
         detail_label="Monto original",
@@ -164,7 +164,6 @@ STYLES: Final[dict[Issuer, IssuerStyle]] = {
     ),
     Issuer.BNA: IssuerStyle(
         issuer=Issuer.BNA,
-        display_name="Banco Público F",
         document_label="Constancia de transferencia bancaria",
         amount_label="Importe transferido",
         detail_label="Importe según detalle",
@@ -232,22 +231,22 @@ def _rows(label: ReceiptLabel) -> list[tuple[str, str]]:
     return rows
 
 
-def _draw_header(draw: ImageDraw.ImageDraw, style: IssuerStyle) -> int:
-    """Draw the header and return the y coordinate where the body starts."""
+def _draw_header(draw: ImageDraw.ImageDraw, style: IssuerStyle, display_name: str) -> int:
+    """Draw the header with the published issuer name; return where the body starts."""
     width = style.width
     margin = style.margin
     if style.layout in ("band", "card", "table", "official"):
         draw.rectangle((0, 0, width, style.header_height), fill=style.header_bg)
         title_font = load_font(22, bold=True)
         sub_font = load_font(15)
-        draw.text((margin, 34), style.display_name, font=title_font, fill=style.header_text)
+        draw.text((margin, 34), display_name, font=title_font, fill=style.header_text)
         draw.text((margin, 68), style.document_label, font=sub_font, fill=style.header_text)
         draw.rectangle((0, style.header_height, width, style.header_height + 4), fill=style.accent)
         return style.header_height + 28
     if style.layout == "minimal":
         title_font = load_font(19, bold=True)
         sub_font = load_font(14)
-        draw.text((margin, 40), style.display_name, font=title_font, fill=style.text)
+        draw.text((margin, 40), display_name, font=title_font, fill=style.text)
         draw.text((margin, 70), style.document_label, font=sub_font, fill=style.muted)
         draw.rectangle((margin, 104, width - margin, 108), fill=style.accent)
         return 132
@@ -255,7 +254,7 @@ def _draw_header(draw: ImageDraw.ImageDraw, style: IssuerStyle) -> int:
     draw.rectangle((16, 16, width - 16, style.header_height), outline=style.accent, width=2)
     title_font = load_font(21, bold=True)
     sub_font = load_font(14)
-    draw.text((width // 2, 46), style.display_name, font=title_font, fill=style.text, anchor="mm")
+    draw.text((width // 2, 46), display_name, font=title_font, fill=style.text, anchor="mm")
     draw.text((width // 2, 80), style.document_label, font=sub_font, fill=style.muted, anchor="mm")
     return style.header_height + 26
 
@@ -403,8 +402,15 @@ def _draw_rows(draw: ImageDraw.ImageDraw, style: IssuerStyle, label: ReceiptLabe
     return y
 
 
-def render_receipt(label: ReceiptLabel) -> bytes:
-    """Render one label as an optimized PNG and return its bytes."""
+def render_receipt(
+    label: ReceiptLabel, *, display_names: Mapping[Issuer, str] | None = None
+) -> bytes:
+    """Render one label as an optimized PNG and return its bytes.
+
+    ``display_names`` is the published issuer table; the v1 override exists only so the
+    frozen dataset keeps reproducing byte for byte.
+    """
+    names = display_names or ISSUER_DISPLAY_NAMES
     style = STYLES[label.issuer]
     image = Image.new("RGB", (style.width, style.height), style.page_bg)
     draw = ImageDraw.Draw(image)
@@ -420,7 +426,7 @@ def render_receipt(label: ReceiptLabel) -> bytes:
             fill=style.card_bg,
         )
 
-    top = _draw_header(draw, style)
+    top = _draw_header(draw, style, names[label.issuer])
     top = _draw_amount(draw, style, label, top)
     bottom = _draw_rows(draw, style, label, top + 24)
 

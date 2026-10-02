@@ -1,9 +1,9 @@
 """Evaluate an extractor over a dataset and report the harness metrics.
 
-    uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor dummy
-    uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor ocr
-    uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor llm --model qwen3.6
-    uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor cascade
+    uv run python scripts/evaluate.py --dataset dataset/synthetic/v2 --extractor dummy
+    uv run python scripts/evaluate.py --dataset dataset/synthetic/v2 --extractor ocr
+    uv run python scripts/evaluate.py --dataset dataset/synthetic/v2 --extractor llm --model qwen3.6
+    uv run python scripts/evaluate.py --dataset dataset/synthetic/v2 --extractor cascade
 
 ``llm`` measures exactly one vision model (``--model``, defaulting to
 ``VISION_MODEL_PRIMARY``) with no fallback, so the numbers belong to that model alone;
@@ -29,7 +29,7 @@ from receipt_verifier.harness import default_report_path, render_table, run_eval
 from receipt_verifier.ratelimit import limiter_from_env
 from receipt_verifier.schema import AR_TZ
 
-DEFAULT_DATASET: Final = Path("dataset/synthetic/v1")
+DEFAULT_DATASET: Final = Path("dataset/synthetic/v2")
 LLM_MODEL_ENV: Final = "VISION_MODEL_PRIMARY"
 EXTRACTORS: Final = ("dummy", "ocr", "llm", "cascade")
 

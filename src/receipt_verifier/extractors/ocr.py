@@ -29,7 +29,7 @@ from typing import Final, Protocol
 from receipt_verifier.confidence import SourceQuality, score_extraction
 from receipt_verifier.extraction import ExtractionResult
 from receipt_verifier.identifiers import parse_destination_text
-from receipt_verifier.schema import Issuer
+from receipt_verifier.schema import ISSUER_DISPLAY_NAMES, Issuer, issuer_for_display_name
 
 OCR_EXTRACTOR_NAME: Final = "ocr"
 DEFAULT_LANGUAGES: Final = "spa+eng"
@@ -349,7 +349,15 @@ def _value_after(
 
 
 def identify_issuer(rows: tuple[OcrRow, ...]) -> Issuer | None:
-    """Vote the issuer from its wording: unique best match wins, ties return ``None``."""
+    """Identify the issuer: the published header name first, then its layout wording.
+
+    The header name is the published, 1:1 mapping (:data:`ISSUER_DISPLAY_NAMES`); the
+    per-issuer amount/detail labels remain the fallback, which is what keeps receipts
+    rendered before the mapping was published (``dataset/synthetic/v1``) readable.
+    """
+    named = _issuer_from_display_name(rows)
+    if named is not None:
+        return named
     scores: dict[Issuer, int] = {}
     for issuer, (amount_label, detail_label) in ISSUER_LABELS.items():
         scores[issuer] = sum(
@@ -362,6 +370,28 @@ def identify_issuer(rows: tuple[OcrRow, ...]) -> Issuer | None:
         return None
     winners = [issuer for issuer, score in scores.items() if score == best]
     return winners[0] if len(winners) == 1 else None
+
+
+def _issuer_from_display_name(rows: tuple[OcrRow, ...]) -> Issuer | None:
+    """The published issuer name printed in the header, tolerating OCR noise.
+
+    An exact match wins outright; otherwise the single best name above the strict
+    threshold is accepted, so a misread letter does not lose the field. A tie between two
+    names is ambiguous and returns ``None`` rather than guessing.
+    """
+    candidates: set[Issuer] = set()
+    for row in rows:
+        for item in row.lines:
+            exact = issuer_for_display_name(item.text)
+            if exact is not None:
+                return exact
+            folded = fold(item.text)
+            for issuer, name in ISSUER_DISPLAY_NAMES.items():
+                if _similar_strict(folded, fold(name)):
+                    candidates.add(issuer)
+    if len(candidates) == 1:
+        return next(iter(candidates))
+    return None
 
 
 def normalize_operation_id(token: str) -> str:
