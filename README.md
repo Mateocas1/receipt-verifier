@@ -362,95 +362,141 @@ Undefined rates (no positive predictions, empty dataset) are reported as `n/a`, 
 
 ## Results (synthetic set)
 
-Live comparison on `dataset/synthetic/v1` — 150 receipts, 30 of them adversarial — against the
-NaN OpenAI-compatible endpoint, one request at a time: `EVAL_RPM=20`, `LLM_MAX_TOKENS=3000`,
-`LLM_TIMEOUT_SECONDS=120`, `temperature=0`. The dataset printed no issuer code, which is why this
-sweep's coverage and recall are capped (§3 below); `synthetic/v2` fixes exactly that and is the
-dataset to re-run once a key is available. The raw per-sample reports stay under the
-gitignored `reports/`; the committed [`results/llm-eval.json`](results/llm-eval.json) is the
-summary these tables are rendered from, and `scripts/summarize_llm_eval.py --markdown`
-re-renders them, so the table cannot drift from the runs.
+Every row below is a real provider run on 150 receipts (30 adversarial), one request at a time:
+`EVAL_RPM=20`, `LLM_MAX_TOKENS=3000`, `LLM_TIMEOUT_SECONDS=120`, `temperature=0`. The
+`synthetic/v1` block is the first sweep and is kept for comparison; the `synthetic/v2` block is
+the follow-up on the dataset that prints the published issuer name (see the dataset section).
+The raw per-sample reports stay under the gitignored `reports/`; the committed
+[`results/llm-eval.json`](results/llm-eval.json) is the summary these tables are rendered from,
+and `scripts/summarize_llm_eval.py --markdown` re-renders them, so the table cannot drift from
+the runs.
 
-| Extractor | Field accuracy | approve precision | approve recall | False approvals (adversarial) | Manual review | Latency p50 / p95 | Tokens/receipt |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `dummy` (label replay) | 1.000 | 1.000 | 1.000 | **0** (0/30) | 0.040 | 0 ms / 0 ms | 0 |
-| `ocr` (Tesseract + parsers) | 1.000 | 1.000 | 1.000 | **0** (0/30) | 0.040 | 304 ms / 343 ms | 0 |
-| `llm-deepseek-v4-flash` | 0.995 | 1.000 | 0.442 | **0** (0/30) | 0.480 | 4 026 ms / 6 041 ms | 1 056 |
-| `llm-qwen3.8-flash` | 0.998 | 1.000 | 0.558 | **0** (0/30) | 0.393 | 9 134 ms / 21 760 ms | 1 571 |
-| `llm-mimo-v2.6-flash` | 0.997 | 1.000 | 0.483 | **0** (0/30) | 0.447 | 10 876 ms / 32 859 ms | 1 085 |
-| `llm-glm5.3-flash` | 0.997 | 0.980 | 0.400 | 1 (1/30) | 0.500 | 8 820 ms / 21 211 ms | 1 568 |
-| `llm-qwen3.6` | 0.859 | 1.000 | 0.567 | **0** (0/30) | 0.400 | 20 055 ms / 89 658 ms | 2 621 |
-| `llm-gemma4` | 0.929 | 0.964 | 0.450 | 2 (2/30) | 0.493 | 20 839 ms / 120 101 ms | 2 040 |
-| `cascade` (deepseek → qwen3.8 → OCR) | 0.999 | 1.000 | 1.000 | **0** (0/30) | 0.040 | 10 285 ms / 18 189 ms | 647 |
+| Extractor | Dataset | Field accuracy | approve precision | approve recall | False approvals (adversarial) | Manual review | Latency p50 / p95 | Tokens/receipt |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `dummy` (label replay) | synthetic v1 | 1.000 | 1.000 | 1.000 | **0** (0/30) | 0.040 | 0 ms / 0 ms | 0 |
+| `ocr` (Tesseract + parsers) | synthetic v1 | 1.000 | 1.000 | 1.000 | **0** (0/30) | 0.040 | 304 ms / 343 ms | 0 |
+| `llm-deepseek-v4-flash` | synthetic v1 | 0.995 | 1.000 | 0.442 | **0** (0/30) | 0.480 | 4 026 ms / 6 041 ms | 1 056 |
+| `llm-qwen3.8-flash` | synthetic v1 | 0.998 | 1.000 | 0.558 | **0** (0/30) | 0.393 | 9 134 ms / 21 760 ms | 1 571 |
+| `llm-mimo-v2.6-flash` | synthetic v1 | 0.997 | 1.000 | 0.483 | **0** (0/30) | 0.447 | 10 876 ms / 32 859 ms | 1 085 |
+| `llm-glm5.3-flash` | synthetic v1 | 0.997 | 0.980 | 0.400 | 1 (1/30) | 0.500 | 8 820 ms / 21 211 ms | 1 568 |
+| `llm-qwen3.6` | synthetic v1 | 0.859 | 1.000 | 0.567 | **0** (0/30) | 0.400 | 20 055 ms / 89 658 ms | 2 621 |
+| `llm-gemma4` | synthetic v1 | 0.929 | 0.964 | 0.450 | 2 (2/30) | 0.493 | 20 839 ms / 120 101 ms | 2 040 |
+| `cascade` (deepseek → qwen3.8 → OCR) | synthetic v1 | 0.999 | 1.000 | 1.000 | **0** (0/30) | 0.040 | 10 285 ms / 18 189 ms | 647 |
+| `dummy` (label replay) | synthetic v2 | 1.000 | 1.000 | 1.000 | **0** (0/30) | 0.040 | 0 ms / 0 ms | 0 |
+| `ocr` (Tesseract + parsers) | synthetic v2 | 1.000 | 1.000 | 1.000 | **0** (0/30) | 0.040 | 307 ms / 346 ms | 0 |
+| `llm-deepseek-v4-flash` | synthetic v2 | 0.997 | 1.000 | 0.983 | **0** (0/30) | 0.040 | 4 134 ms / 6 193 ms | 1 045 |
+| `llm-qwen3.8-flash` | synthetic v2 | 0.983 | 1.000 | 0.967 | **0** (0/30) | 0.073 | 7 351 ms / 16 060 ms | 1 477 |
+| `cascade` (deepseek → qwen3.8 → OCR) | synthetic v2 | 0.995 | 1.000 | 0.975 | **0** (0/30) | 0.040 | 3 352 ms / 4 838 ms | 1 043 |
+
+### What v2 changed
+
+`v2` prints the published issuer name and the prompt now publishes the mapping, so the model
+reads `issuer` instead of inferring it from correlated layout and vocabulary. Same two models,
+same ledger, same prompts otherwise:
+
+| Model | `issuer` v1 → v2 | coverage v1 → v2 | **recall v1 → v2** | manual review v1 → v2 | False approvals v1 → v2 |
+| --- | --- | --- | --- | --- | --- |
+| `deepseek-v4-flash` | 0.44 → **1.00** | 0.440 → **1.000** | 0.442 → **0.983** | 0.480 → **0.040** | 0 → 0 |
+| `qwen3.8-flash` | 0.53 → **0.99** | 0.573 → **0.967** | 0.558 → **0.967** | 0.393 → **0.073** | 0 → 0 |
+
+So the unreadable issuer was worth **+0.54 recall** for the primary and **+0.41** for the
+secondary: most of what looked like model caution on v1 was the dataset asking for a field the
+image never carried. False approvals stayed at **0/30** in both blocks, so the replay fix and the
+injection gate were not paid for with the artifact's removal.
+
+The v2 cascade no longer needs its fallbacks — all 150 receipts were answered by `llm-primary`
+(`ocr` 0, `llm-secondary` 0), because the primary's reading is now usable — which is why it got
+faster (3.4 s p50 against 10.3 s) and why its recall (0.975) is now the primary's own: OCR's
+perfect-for-these-six-layouts reading is no longer masking the model's three destination
+misreads.
 
 **Field accuracy** is the mean per-field exact match over the eight fields the synthetic images
 can actually carry, so it says something about reading a receipt. `issuer` is deliberately
 excluded from that mean and still reported per field in the summary.
 
-| Model | amount | amount_detail | transferred_at | sender_name | sender_bank | destination | operation_id | `issuer` | memo |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `deepseek-v4-flash` | 1.00 | 1.00 | 1.00 | 1.00 | 0.99 | 0.97 | 1.00 | 0.44 | 1.00 |
-| `qwen3.8-flash` | 1.00 | 1.00 | 1.00 | 1.00 | 0.99 | 0.99 | 1.00 | 0.53 | 1.00 |
-| `mimo-v2.6-flash` | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 0.99 | 1.00 | 0.46 | 0.99 |
-| `glm5.3-flash` | 1.00 | 0.99 | 1.00 | 1.00 | 1.00 | 0.98 | 1.00 | 0.41 | 1.00 |
-| `qwen3.6` | 0.86 | 0.86 | 0.86 | 0.86 | 0.86 | 0.83 | 0.85 | 0.49 | 0.89 |
-| `gemma4` | 0.93 | 0.93 | 0.93 | 0.93 | 0.93 | 0.90 | 0.92 | 0.46 | 0.95 |
-| `ocr` | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| Model | Dataset | amount | amount_detail | transferred_at | sender_name | sender_bank | destination | operation_id | `issuer` | memo |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `deepseek-v4-flash` | v1 | 1.00 | 1.00 | 1.00 | 1.00 | 0.99 | 0.97 | 1.00 | 0.44 | 1.00 |
+| `qwen3.8-flash` | v1 | 1.00 | 1.00 | 1.00 | 1.00 | 0.99 | 0.99 | 1.00 | 0.53 | 1.00 |
+| `mimo-v2.6-flash` | v1 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 0.99 | 1.00 | 0.46 | 0.99 |
+| `glm5.3-flash` | v1 | 1.00 | 0.99 | 1.00 | 1.00 | 1.00 | 0.98 | 1.00 | 0.41 | 1.00 |
+| `qwen3.6` | v1 | 0.86 | 0.86 | 0.86 | 0.86 | 0.86 | 0.83 | 0.85 | 0.49 | 0.89 |
+| `gemma4` | v1 | 0.93 | 0.93 | 0.93 | 0.93 | 0.93 | 0.90 | 0.92 | 0.46 | 0.95 |
+| `cascade` | v1 | 1.00 | 1.00 | 1.00 | 1.00 | 0.99 | 1.00 | 1.00 | 0.96 | 1.00 |
+| `deepseek-v4-flash` | v2 | 1.00 | 0.99 | 1.00 | 1.00 | 1.00 | 0.99 | 0.99 | **1.00** | 1.00 |
+| `qwen3.8-flash` | v2 | 0.99 | 0.99 | 0.99 | 0.99 | 0.99 | 0.96 | 0.99 | **0.99** | 0.99 |
+| `cascade` | v2 | 1.00 | 1.00 | 1.00 | 0.99 | 1.00 | 0.97 | 1.00 | **1.00** | 0.99 |
+| `ocr` | both | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
 
-False approvals by adversarial class (each class is 6 receipts):
+False approvals by adversarial class (each class is 6 receipts; every v2 row is `0 0 0 0 0`, so
+only the v1 exceptions are listed, followed by the v2 rows):
 
-| Model | edited amount | wrong destination | duplicate id | injected instruction | stale date |
-| --- | --- | --- | --- | --- | --- |
-| `deepseek-v4-flash` | 0 | 0 | 0 | **0** | 0 |
-| `qwen3.8-flash` | 0 | 0 | 0 | **0** | 0 |
-| `mimo-v2.6-flash` | 0 | 0 | 0 | **0** | 0 |
-| `glm5.3-flash` | 0 | 0 | 1 | **0** | 0 |
-| `qwen3.6` | 0 | 0 | 0 | **0** | 0 |
-| `gemma4` | 0 | 0 | 2 | **0** | 0 |
-| `cascade` | 0 | 0 | 0 | **0** | 0 |
+| Model | Dataset | edited amount | wrong destination | duplicate id | injected instruction | stale date |
+| --- | --- | --- | --- | --- | --- | --- |
+| `deepseek-v4-flash` | v1 | 0 | 0 | 0 | **0** | 0 |
+| `qwen3.8-flash` | v1 | 0 | 0 | 0 | **0** | 0 |
+| `mimo-v2.6-flash` | v1 | 0 | 0 | 0 | **0** | 0 |
+| `glm5.3-flash` | v1 | 0 | 0 | 1 | **0** | 0 |
+| `qwen3.6` | v1 | 0 | 0 | 0 | **0** | 0 |
+| `gemma4` | v1 | 0 | 0 | 2 | **0** | 0 |
+| `cascade` | v1 | 0 | 0 | 0 | **0** | 0 |
+| `deepseek-v4-flash` | v2 | 0 | 0 | 0 | **0** | 0 |
+| `qwen3.8-flash` | v2 | 0 | 0 | 0 | **0** | 0 |
+| `cascade` | v2 | 0 | 0 | 0 | **0** | 0 |
 
-No live model ever approved an injected-instruction receipt: **0/6 on every row**, each rejection
-carrying the `prompt_injection` reason. `gemma4` routed one of its six injected receipts to
-`manual_review` instead of the expected `reject` (it failed to read enough fields), which is a
-human work item rather than a false approval; `tests/test_live_injection.py` pins both halves of
-that contract against the committed summary.
+No live model ever approved an injected-instruction receipt: **0/6 on every row of both datasets**,
+each rejection carrying the `prompt_injection` reason. Two adversarial receipts were routed to a
+human instead of being rejected outright — `gemma4` on one injected receipt (v1) and
+`qwen3.8-flash` on one stale-date receipt (v2, the single sample whose extractor call failed and
+became an empty reading) — which is a human work item rather than a false approval;
+`tests/test_live_injection.py` pins the injection half of that contract against the committed
+summary.
+
+On v2 the only non-approvals among the 120 approvable receipts are model misreads in the safe
+direction: `deepseek-v4-flash` 2 (`destination_mismatch`), `qwen3.8-flash` 4 (3
+`destination_mismatch`, 1 `missing_field` from its one extractor error) and the cascade 3
+(`destination_mismatch`). Nothing was approved that should not have been.
 
 ### Chosen defaults
 
 **`VISION_MODEL_PRIMARY=deepseek-v4-flash`, `VISION_MODEL_SECONDARY=qwen3.8-flash`** (the
-repository ships no model id; these are the measured recommendation).
+repository ships no model id; these are the measured recommendation, re-confirmed on
+`synthetic/v2`).
 
-- `deepseek-v4-flash` is the only model whose p95 (6.0 s) fits the service's default
-  `EXTRACTOR_TIMEOUT_SECONDS=20`, and it is the cheapest (1 056 tokens/receipt) at 0 false
-  approvals and 0 extractor errors. Its 0.995 readable accuracy trails the best by 0.3 pp,
-  which is noise at this sample size.
-- `qwen3.8-flash` is the most accurate readable-field reader (0.998) with 0 false approvals; as
-  a second stage it only runs when the primary's reading is unusable. Raise
-  `EXTRACTOR_TIMEOUT_SECONDS` to ~30 s for it, or accept that its p95 occasionally exceeds the
-  stage deadline and falls through to OCR.
-- `mimo-v2.6-flash` is the token-cheaper alternative (1 085/receipt) if 32.9 s at p95 is
-  acceptable. `qwen3.6` and `gemma4` are ruled out: 2.5× the tokens, p95 over 89 s, 10 extractor
-  errors each and (for `gemma4`) 2 false approvals.
+- `deepseek-v4-flash` is the only model whose p95 (6.2 s on v2) fits the service's default
+  `EXTRACTOR_TIMEOUT_SECONDS=20`, and it is the cheapest (1 045 tokens/receipt on v2) at 0 false
+  approvals and 0 extractor errors. On v2 it also reads the most: recall 0.983 against
+  `qwen3.8-flash`'s 0.967.
+- `qwen3.8-flash` is the secondary; as a second stage it only runs when the primary's reading is
+  unusable. On v2 it read every receipt except one transient extractor failure and made 3
+  destination misreads. Raise `EXTRACTOR_TIMEOUT_SECONDS` to ~30 s for it, or accept that its
+  p95 occasionally exceeds the stage deadline and falls through to OCR.
+- `mimo-v2.6-flash` is the token-cheaper alternative (1 085/receipt on v1) if 32.9 s at p95 is
+  acceptable; it was not re-run on v2. `qwen3.6` and `gemma4` are ruled out: 2.5× the tokens,
+  p95 over 89 s, 10 extractor errors each and (for `gemma4`) 2 false approvals.
 
 The cascade row is the shipped configuration with `EXTRACTOR_TIMEOUT_SECONDS=20`, its own
 circuit breakers and all three stages enabled; on this host the local OCR stage needed
-`OCR_TESSDATA` (see the OCR extra), otherwise the cascade is LLM-only. Stage usage was
-`llm-primary` 70, `ocr` 65, `llm-secondary` 15: most of the time the LLM reading was not usable
-(isolated below), so the cascade collected OCR's complete reading. That is the design working —
-and it means the cascade's token total is a mix, not a per-model number.
+`OCR_TESSDATA` (see the OCR extra), otherwise the cascade is LLM-only. On **v1** stage usage was
+`llm-primary` 70, `ocr` 65, `llm-secondary` 15: the LLM reading was often unusable, so the
+cascade collected OCR's complete reading — the design working, and the reason that row's recall
+is 1.000 and its token total is a mix rather than a per-model number. On **v2** the primary
+answered all 150 (`ocr` 0, `llm-secondary` 0), so the cascade row is the primary's own reading
+with the fallbacks idle.
 
 ### Three things that change how these numbers must be read
 
-1. **`issuer` is not printed on the synthetic receipts.** The renderer draws invented placeholder
-   names ("Billetera A", "Banco Digital C"), never the issuer code the label carries, so no model
-   can read it; the 0.41-0.53 column is inference from correlated layout and vocabulary. Because
-   `issuer` is a *critical* field, an unreadable issuer forces `manual_review`, which is why
-   coverage and approve recall sit near 0.4-0.6 even at ~0.99 accuracy on readable fields. This
-   is an artifact of the dataset, not of the models — and the reason the cascade reaches 1.000
-   recall: the OCR parser knows these six layouts by construction. **`synthetic/v2` fixes the
-   artifact** by printing the published issuer name (`ISSUER_DISPLAY_NAMES`, published in the
-   prompt as well: see the dataset section); this sweep ran on `v1` and a provider key is needed
-   to re-measure.
+1. **`issuer` was not printed on the `v1` receipts, and that is the whole v1/v2 story.** The v1
+   renderer drew invented placeholder names ("Billetera A", "Banco Digital C"), never the issuer
+   code the label carries, so no model could read it; the 0.41-0.53 column was inference from
+   correlated layout and vocabulary. Because `issuer` is a *critical* field, an unreadable issuer
+   forced `manual_review`, which is why v1 coverage sat at 0.44-0.57 and recall at 0.44-0.56 even
+   at ~0.99 accuracy on readable fields — an artifact of the dataset, not of the models. It was
+   also why the v1 cascade reached 1.000 recall: the OCR parser knows these six layouts by
+   construction. **`synthetic/v2` fixes the artifact** (`ISSUER_DISPLAY_NAMES`, published in the
+   prompt as well) and the re-measurement quantifies it: recall **0.442 → 0.983** for
+   `deepseek-v4-flash` and **0.558 → 0.967** for `qwen3.8-flash`, with `issuer` at 1.00 / 0.99
+   and false approvals unchanged at 0.
 2. **Both false-approval classes found here are the replay corner.** All three false approvals
    (`glm5.3-flash` ×1, `gemma4` ×2) are `duplicate_operation_id` receipts whose twin went to
    `manual_review`: with approval-only recording, an operation id only entered the registry once
@@ -540,14 +586,16 @@ unit tests with a fake transport, including the "provider down ⇒ fall back to 
 - **Provider behaviour is measured, but on synthetic images only.** Real receipts (cropped,
   compressed, re-photographed, other fonts) are the next honest test; `dataset/real/` is still
   empty.
-- **The live numbers are one sweep of one synthetic set.** Every LLM row comes from a single
-  150-receipt run per model on `2026-10-02`, at `temperature=0`, `LLM_MAX_TOKENS=3000` and
-  `LLM_TIMEOUT_SECONDS=120`. The provider is not bit-stable and caches identical requests, so a
-  second sweep would move these numbers; treat the ranking, not the third decimal.
-- **The `issuer` field is a dataset artifact.** The renderer prints invented placeholder names
-  instead of issuer codes, so no model can read it; it is excluded from the headline accuracy
-  and it forces `manual_review` whenever it is missing. The cascade's perfect recall leans on
-  OCR, which knows these six layouts by construction.
+- **The live numbers are single sweeps.** Each LLM row comes from one 150-receipt run per model on
+  `2026-10-02`, at `temperature=0`, `LLM_MAX_TOKENS=3000` and `LLM_TIMEOUT_SECONDS=120`: a v1
+  sweep (all six models) and a v2 sweep (the two chosen models plus the cascade). The provider is
+  not bit-stable and caches identical requests, so a second sweep would move these numbers; treat
+  the ranking and the v1→v2 deltas, not the third decimal.
+- **`synthetic/v1` does not print the issuer, `synthetic/v2` does.** The v1 numbers are kept for
+  comparison and are the reason v1 coverage/recall sit at 0.44-0.57; `issuer` is excluded from the
+  headline accuracy on both datasets and still reported per field. `mimo-v2.6-flash`, `glm5.3-flash`,
+  `qwen3.6` and `gemma4` were only measured on v1, where their recall is capped by the same
+  artifact, so their v1 ranking against the two v2-measured models is not like-for-like.
 - **NaN publishes no prices**, so cost is reported as 0 and the token columns are the cost proxy.
 - **A model that drops the memo would defeat the injection denylist.** All six models rejected
   all six injected receipts (0/6 approved, `prompt_injection` each time), and the payload schema
@@ -571,12 +619,11 @@ unit tests with a fake transport, including the "provider down ⇒ fall back to 
 
 ## Next
 
-1. Re-run the vision-model sweep on `synthetic/v2`, where the issuer is readable, and see how
-   much of the 0.4-0.6 recall cap was the dataset artifact; then add real anonymized receipts and
-   report synthetic-vs-real deltas next to each other. This needs a provider key: the harness,
-   the prompt and the reader already carry the published mapping, so only the provider calls are
-   outstanding.
-2. Configure prices and re-run the comparison so the token columns become dollars; then decide
+1. Extend the v2 sweep to `mimo-v2.6-flash`, `glm5.3-flash`, `qwen3.6` and `gemma4`, so every row
+   in the comparison is measured on the dataset the harness ships with.
+2. Add real anonymized receipts and report synthetic-vs-real deltas next to each other — the
+   `issuer` question is settled on synthetic data and only reality can move it further.
+3. Configure prices and re-run the comparison so the token columns become dollars; then decide
    whether the answer cap can drop below `3000` without losing JSON answers.
 3. Add a per-issuer and per-adversarial-kind breakdown to `Metrics` (the data is already in
    `SampleOutcome`), plus a confusion matrix per rejection reason.
