@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal
+from typing import ClassVar
 
 import httpx
 import pytest
 
 from receipt_verifier.extractors.llm import (
+    DESTINATION_PROMPT,
     SYSTEM_PROMPT,
     HttpLlmTransport,
     LlmCompletion,
@@ -19,6 +21,7 @@ from receipt_verifier.extractors.llm import (
     LlmTransportError,
     VisionLlmExtractor,
     media_type_of,
+    parse_destination_payload,
     parse_payload,
 )
 from receipt_verifier.schema import (
@@ -112,6 +115,62 @@ class TestPrompt:
         assert media_type_of(b"\xff\xd8\xff\xe0jpeg") == "image/jpeg"
         assert media_type_of(b"RIFF\x00\x00\x00\x00WEBPVP8 ") == "image/webp"
         assert media_type_of(b"not-an-image") == "application/octet-stream"
+
+
+class TestFocusedDestination:
+    """The one-field re-ask: same model, same rules, only the prompt is focused."""
+
+    FOCUSED: ClassVar[dict[str, dict[str, str]]] = {
+        "destination": {"kind": "cvu", "value": "2850590940090418135201", "holder": "L"}
+    }
+
+    def test_asks_the_same_extractor_with_a_focused_prompt(self) -> None:
+        engine, transport = extractor(json.dumps(self.FOCUSED))
+        result = engine.refine_destination(IMAGE)
+        assert len(transport.calls) == 1
+        call = transport.calls[0]
+        assert call["prompt"] == DESTINATION_PROMPT
+        assert call["system"] == SYSTEM_PROMPT
+        assert call["model"] == "vision-primary"
+        assert call["image_base64"]
+        assert result.extractor == "llm"
+        assert result.destination.value is not None
+        assert result.destination.value.key == "cvu:2850590940090418135201"
+        assert result.destination.value.holder == "L"
+
+    def test_a_bare_destination_object_is_accepted(self) -> None:
+        bare = {"kind": "alias", "value": "camila.gomez.ar", "holder": "Lautaro Ojeda"}
+        engine, _ = extractor(json.dumps(bare))
+        result = engine.refine_destination(IMAGE)
+        assert result.destination.value is not None
+        assert result.destination.value.key == "alias:camila.gomez.ar"
+
+    def test_the_code_drops_an_invalid_check_digit(self) -> None:
+        broken = {"destination": {"kind": "cvu", "value": "2850590940090418135202"}}
+        engine, _ = extractor(json.dumps(broken))
+        result = engine.refine_destination(IMAGE)
+        assert result.destination.value is None
+        assert result.destination.confidence == 0.0
+
+    def test_an_unreadable_answer_yields_no_destination(self) -> None:
+        engine, _ = extractor('{"destination": null}')
+        result = engine.refine_destination(IMAGE)
+        assert result.destination.value is None
+
+    def test_invalid_json_is_retried_inside_the_focused_call(self) -> None:
+        engine, transport = extractor("not json", json.dumps(self.FOCUSED))
+        result = engine.refine_destination(IMAGE)
+        assert len(transport.calls) == 2
+        assert transport.calls[1]["prompt"] != transport.calls[0]["prompt"]
+        assert result.destination.value is not None
+
+    def test_the_focused_answer_is_scored_by_code(self) -> None:
+        engine, _ = extractor(json.dumps(self.FOCUSED))
+        result = engine.refine_destination(IMAGE)
+        assert result.destination.confidence > 0.0
+        # only the destination is reported by the focused reading
+        assert result.amount.value is None
+        assert "destination" in parse_destination_payload(json.dumps(self.FOCUSED)).to_values()
 
 
 class TestParsing:

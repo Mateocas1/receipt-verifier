@@ -77,6 +77,15 @@ RETRY_PROMPT: Final = (
     "exactly the documented keys, and nothing else."
 )
 
+EXTRACTION_PROMPT: Final = "Extract the fields from this receipt image. Reply with JSON only."
+
+DESTINATION_PROMPT: Final = (
+    "Read only the destination printed on this receipt: an alias, CVU or CBU. Reply with a "
+    "single JSON object using exactly this key: destination, an object with the documented "
+    "kind, value and holder. Never add keys."
+)
+"""The focused single-field prompt used to re-ask for a destination."""
+
 _FENCE_RE: Final = re.compile(r"```(?:json)?\s*(?P<body>.*?)```", re.DOTALL)
 _OBJECT_RE: Final = re.compile(r"\{.*\}", re.DOTALL)
 
@@ -395,8 +404,8 @@ def _status_error_message(exc: httpx.HTTPStatusError) -> str:
     return _error_message(exc.response.status_code, exc.response.text)
 
 
-def parse_payload(text: str) -> LlmReceiptPayload:
-    """Parse a model answer into the receipt payload, tolerating fences and prose."""
+def _json_object(text: str) -> dict[str, object]:
+    """Extract and decode the JSON object a model answered, tolerating fences and prose."""
     candidate = text.strip()
     fenced = _FENCE_RE.search(candidate)
     if fenced is not None:
@@ -412,7 +421,29 @@ def parse_payload(text: str) -> LlmReceiptPayload:
         raise LlmResponseError(f"model answer was not valid JSON: {exc}") from exc
     if not isinstance(raw, dict):
         raise LlmResponseError("model answer was not a JSON object")
-    return LlmReceiptPayload.model_validate(raw)
+    return raw
+
+
+def parse_payload(text: str) -> LlmReceiptPayload:
+    """Parse a full model answer into the receipt payload, tolerating fences and prose."""
+    return LlmReceiptPayload.model_validate(_json_object(text))
+
+
+def parse_destination_payload(text: str) -> LlmReceiptPayload:
+    """Parse a focused destination answer, nested (``destination``) or bare.
+
+    A model asked for one field may answer with the documented ``destination`` object or
+    with the object's own keys at the top level; both carry the same three fields, so both
+    are accepted and everything else is ignored.
+    """
+    raw = _json_object(text)
+    nested = raw.get("destination")
+    candidate = nested if isinstance(nested, dict) else raw
+    try:
+        destination = LlmDestination.model_validate(candidate)
+    except ValidationError as exc:
+        raise LlmResponseError(f"model answer was not a destination object: {exc}") from exc
+    return LlmReceiptPayload(destination=destination)
 
 
 def media_type_of(image: bytes) -> str:
@@ -461,10 +492,20 @@ class VisionLlmExtractor:
         """The provider client this extractor calls (inspectable for pacing stats)."""
         return self._transport
 
-    def extract(self, image: bytes) -> ExtractionResult:
+    def _ask(
+        self,
+        image: bytes,
+        prompt: str,
+        parser: Callable[[str], LlmReceiptPayload],
+    ) -> tuple[LlmReceiptPayload, str, Decimal, int, int]:
+        """One provider exchange with the bounded parse-retry loop both prompts share.
+
+        Returns the parsed payload, the raw answer text, the priced cost and the token
+        usage accumulated across the loop.
+        """
         image_base64 = base64.b64encode(image).decode("ascii")
         media_type = media_type_of(image)
-        prompt = "Extract the fields from this receipt image. Reply with JSON only."
+        current = prompt
         last_error: LlmResponseError | None = None
         cost = Decimal("0")
         prompt_tokens = 0
@@ -473,7 +514,7 @@ class VisionLlmExtractor:
             completion = self._transport.complete(
                 model=self._model,
                 system=SYSTEM_PROMPT,
-                prompt=prompt,
+                prompt=current,
                 image_base64=image_base64,
                 media_type=media_type,
                 timeout_seconds=self._timeout,
@@ -482,21 +523,49 @@ class VisionLlmExtractor:
             prompt_tokens += completion.prompt_tokens
             completion_tokens += completion.completion_tokens
             try:
-                payload = parse_payload(completion.text)
+                payload = parser(completion.text)
             except LlmResponseError as exc:
                 last_error = exc
-                prompt = RETRY_PROMPT
+                current = RETRY_PROMPT
                 continue
-            return score_extraction(
-                self._name,
-                payload.to_values(),
-                raw_text=completion.text,
-                source_quality=self._quality,
-                cost_usd=cost,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-            )
+            return payload, completion.text, cost, prompt_tokens, completion_tokens
         raise last_error or LlmResponseError("model answer could not be parsed")
+
+    def extract(self, image: bytes) -> ExtractionResult:
+        payload, raw_text, cost, prompt_tokens, completion_tokens = self._ask(
+            image, EXTRACTION_PROMPT, parse_payload
+        )
+        return score_extraction(
+            self._name,
+            payload.to_values(),
+            raw_text=raw_text,
+            source_quality=self._quality,
+            cost_usd=cost,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+
+    def refine_destination(self, image: bytes) -> ExtractionResult:
+        """Re-read only the destination with a focused prompt on the same model.
+
+        The retry wrapper calls this when a full reading's destination is unusable or
+        outside the allowlist. The answer travels through the same payload parser and the
+        same code-owned scoring as a full reading, so the model still proposes and the code
+        still decides; the returned reading carries only the destination plus what the
+        focused call cost.
+        """
+        payload, raw_text, cost, prompt_tokens, completion_tokens = self._ask(
+            image, DESTINATION_PROMPT, parse_destination_payload
+        )
+        return score_extraction(
+            self._name,
+            payload.to_values(),
+            raw_text=raw_text,
+            source_quality=self._quality,
+            cost_usd=cost,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
 
     def as_values(self, payload: LlmReceiptPayload) -> Mapping[str, object]:
         """Exposed for tests and for future extractors that reuse the payload shape."""
@@ -510,6 +579,8 @@ __all__ = [
     "DEFAULT_MAX_TRANSIENT_RETRIES",
     "DEFAULT_RATE_LIMIT_WAIT_SECONDS",
     "DEFAULT_TIMEOUT_SECONDS",
+    "DESTINATION_PROMPT",
+    "EXTRACTION_PROMPT",
     "LLM_EXTRACTOR_NAME",
     "RETRY_PROMPT",
     "SYSTEM_PROMPT",
@@ -532,5 +603,6 @@ __all__ = [
     "VisionLlmExtractor",
     "build_http_client",
     "media_type_of",
+    "parse_destination_payload",
     "parse_payload",
 ]
