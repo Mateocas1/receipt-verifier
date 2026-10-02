@@ -1,0 +1,1098 @@
+{
+  "schema": 1,
+  "generated_at": "2026-10-02T17:17:37.820097+00:00",
+  "provider": {
+    "base_url": "https://api.nan.builders/v1",
+    "rpm": 20,
+    "max_tokens": 3000
+  },
+  "vision_probe": {
+    "probed_at": "2026-10-02T11:23:15.816562+00:00",
+    "base_url": "https://api.nan.builders/v1",
+    "max_tokens": 3000,
+    "rpm": 20,
+    "probe_image_sha256": "49ce9e9d28d304c1d5496ab374bdf1b9833f8ed2bcb5e2601ee717255f994966",
+    "listed_models": [
+      "qwen3.8-flash",
+      "gemma4",
+      "rerank",
+      "mimo-v2.6-flash",
+      "whisper",
+      "kokoro",
+      "qwen3-embedding",
+      "qwen3.6",
+      "glm5.3-flash",
+      "deepseek-v4-flash",
+      "flux-2-klein",
+      "qwen-image-2.1",
+      "minimax-h3"
+    ],
+    "skipped": [
+      {
+        "model": "rerank",
+        "reason": "reranking endpoint, not a chat model"
+      },
+      {
+        "model": "whisper",
+        "reason": "audio transcription"
+      },
+      {
+        "model": "kokoro",
+        "reason": "text-to-speech"
+      },
+      {
+        "model": "qwen3-embedding",
+        "reason": "embeddings"
+      },
+      {
+        "model": "flux-2-klein",
+        "reason": "text-to-image generation (image output, not input)"
+      },
+      {
+        "model": "qwen-image-2.1",
+        "reason": "text-to-image generation (image output, not input)"
+      }
+    ],
+    "probes": [
+      {
+        "model": "qwen3.8-flash",
+        "vision": true,
+        "latency_ms": 7955.88,
+        "answer": "{\"amount\": \"25.000,00\", \"amount_detail\": null, \"transferred_at\": null, \"sender_name\": null, \"sender_bank\": null, \"destination\": null, \"operation_id\": null, \"issuer\": null, \"memo\": null}",
+        "error": ""
+      },
+      {
+        "model": "gemma4",
+        "vision": true,
+        "latency_ms": 28464.02,
+        "answer": "{\n  \"amount\": \"25.000,00\",\n  \"amount_detail\": \"25.000,00\",\n  \"transferred_at\": null,\n  \"sender_name\": null,\n  \"sender_bank\": null,\n  \"destination\": {\n    \"kind\": null,\n    \"value\": null,\n    \"holder\":",
+        "error": ""
+      },
+      {
+        "model": "mimo-v2.6-flash",
+        "vision": true,
+        "latency_ms": 12207.39,
+        "answer": "{\"amount\": \"25.000,00\", \"amount_detail\": null, \"transferred_at\": null, \"sender_name\": null, \"sender_bank\": null, \"destination\": null, \"operation_id\": null, \"issuer\": null, \"memo\": null}",
+        "error": ""
+      },
+      {
+        "model": "qwen3.6",
+        "vision": true,
+        "latency_ms": 6341.15,
+        "answer": "{\n  \"amount\": \"25.000,00\",\n  \"amount_detail\": \"25.000,00\",\n  \"transferred_at\": null,\n  \"sender_name\": null,\n  \"sender_bank\": null,\n  \"destination\": null,\n  \"operation_id\": null,\n  \"issuer\": null,\n  \"m",
+        "error": ""
+      },
+      {
+        "model": "glm5.3-flash",
+        "vision": true,
+        "latency_ms": 3951.03,
+        "answer": "{\"answer\": \"{\\\"amount\\\": \\\"25.000,00\\\", \\\"amount_detail\\\": \\\"25.000,00\\\", \\\"transferred_at\\\": null, \\\"sender_name\\\": null, \\\"sender_bank\\\": null, \\\"destination\\\": null, \\\"operation_id\\\": null, \\\"issue",
+        "error": ""
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "vision": true,
+        "latency_ms": 3743.29,
+        "answer": "{\"amount\": \"25.000,00\", \"amount_detail\": null, \"transferred_at\": null, \"sender_name\": null, \"sender_bank\": null, \"destination\": null, \"operation_id\": null, \"issuer\": null, \"memo\": null}",
+        "error": ""
+      },
+      {
+        "model": "minimax-h3",
+        "vision": false,
+        "latency_ms": 907.68,
+        "answer": "",
+        "error": "LlmTransportError: HTTP 401: {\"error\":{\"message\":\"This API key does not have access to the requested model.\",\"type\":\"auth_error\",\"param\":\"model\",\"code\":\"401\"}}"
+      }
+    ],
+    "vision_models": [
+      "qwen3.8-flash",
+      "gemma4",
+      "mimo-v2.6-flash",
+      "qwen3.6",
+      "glm5.3-flash",
+      "deepseek-v4-flash"
+    ],
+    "rate_limit_wait_seconds": 0.0
+  },
+  "runs": [
+    {
+      "extractor": "dummy",
+      "dataset": "synthetic v1",
+      "field_accuracy": 1.0,
+      "field_accuracy_readable": 1.0,
+      "per_field": {
+        "amount": 1.0,
+        "amount_detail": 1.0,
+        "transferred_at": 1.0,
+        "sender_name": 1.0,
+        "sender_bank": 1.0,
+        "destination": 1.0,
+        "operation_id": 1.0,
+        "issuer": 1.0,
+        "memo": 1.0
+      },
+      "total_tokens": 0,
+      "total_cost_usd": "0",
+      "n": 150,
+      "approve_precision": 1.0,
+      "approve_recall": 1.0,
+      "approve_f1": 1.0,
+      "false_approvals": 0,
+      "false_approval_rate": 0.0,
+      "adversarial_n": 30,
+      "adversarial_false_approvals": 0,
+      "adversarial_false_approval_rate": 0.0,
+      "manual_reviews": 6,
+      "manual_review_rate": 0.04,
+      "approval_rate": 0.8,
+      "coverage": 1.0,
+      "latency_mean_ms": 0.05338922666851431,
+      "latency_p50_ms": 0.05062299896962941,
+      "latency_p95_ms": 0.07492300210287794,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "extractor_errors": 0,
+      "extractor_usage": {
+        "dummy": 150
+      },
+      "injected_instructions": {
+        "n": 6,
+        "decisions": {
+          "reject": 6
+        },
+        "approved": 0,
+        "reasons": {
+          "prompt_injection": 6
+        }
+      },
+      "adversarial_by_kind": {
+        "edited_amount": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "amount_mismatch": 6
+          }
+        },
+        "wrong_destination": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "destination_mismatch": 6
+          }
+        },
+        "duplicate_operation_id": {
+          "n": 6,
+          "decisions": {
+            "manual_review": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "duplicate_operation_id": 6
+          }
+        },
+        "injected_instruction": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "prompt_injection": 6
+          }
+        },
+        "stale_date": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "stale_date": 6
+          }
+        }
+      },
+      "role": "baseline"
+    },
+    {
+      "extractor": "ocr",
+      "dataset": "synthetic v1",
+      "field_accuracy": 1.0,
+      "field_accuracy_readable": 1.0,
+      "per_field": {
+        "amount": 1.0,
+        "amount_detail": 1.0,
+        "transferred_at": 1.0,
+        "sender_name": 1.0,
+        "sender_bank": 1.0,
+        "destination": 1.0,
+        "operation_id": 1.0,
+        "issuer": 1.0,
+        "memo": 1.0
+      },
+      "total_tokens": 0,
+      "total_cost_usd": "0",
+      "n": 150,
+      "approve_precision": 1.0,
+      "approve_recall": 1.0,
+      "approve_f1": 1.0,
+      "false_approvals": 0,
+      "false_approval_rate": 0.0,
+      "adversarial_n": 30,
+      "adversarial_false_approvals": 0,
+      "adversarial_false_approval_rate": 0.0,
+      "manual_reviews": 6,
+      "manual_review_rate": 0.04,
+      "approval_rate": 0.8,
+      "coverage": 1.0,
+      "latency_mean_ms": 308.0644902201796,
+      "latency_p50_ms": 304.02665899600834,
+      "latency_p95_ms": 343.25488000467885,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "extractor_errors": 0,
+      "extractor_usage": {
+        "ocr": 150
+      },
+      "injected_instructions": {
+        "n": 6,
+        "decisions": {
+          "reject": 6
+        },
+        "approved": 0,
+        "reasons": {
+          "prompt_injection": 6
+        }
+      },
+      "adversarial_by_kind": {
+        "edited_amount": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "amount_mismatch": 6
+          }
+        },
+        "wrong_destination": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "destination_mismatch": 6
+          }
+        },
+        "duplicate_operation_id": {
+          "n": 6,
+          "decisions": {
+            "manual_review": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "duplicate_operation_id": 6
+          }
+        },
+        "injected_instruction": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "prompt_injection": 6
+          }
+        },
+        "stale_date": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "stale_date": 6
+          }
+        }
+      },
+      "role": "baseline-ocr"
+    },
+    {
+      "extractor": "llm-deepseek-v4-flash",
+      "dataset": "synthetic v1",
+      "field_accuracy": 0.9333333333333333,
+      "field_accuracy_readable": 0.995,
+      "per_field": {
+        "amount": 1.0,
+        "amount_detail": 1.0,
+        "transferred_at": 1.0,
+        "sender_name": 1.0,
+        "sender_bank": 0.9866666666666667,
+        "destination": 0.9733333333333334,
+        "operation_id": 1.0,
+        "issuer": 0.44,
+        "memo": 1.0
+      },
+      "total_tokens": 158467,
+      "total_cost_usd": "0",
+      "n": 150,
+      "approve_precision": 1.0,
+      "approve_recall": 0.44166666666666665,
+      "approve_f1": 0.6127167630057804,
+      "false_approvals": 0,
+      "false_approval_rate": 0.0,
+      "adversarial_n": 30,
+      "adversarial_false_approvals": 0,
+      "adversarial_false_approval_rate": 0.0,
+      "manual_reviews": 72,
+      "manual_review_rate": 0.48,
+      "approval_rate": 0.35333333333333333,
+      "coverage": 0.44,
+      "latency_mean_ms": 4266.21459844008,
+      "latency_p50_ms": 4026.0451960057253,
+      "latency_p95_ms": 6040.548706005211,
+      "prompt_tokens": 101550,
+      "completion_tokens": 56917,
+      "extractor_errors": 0,
+      "extractor_usage": {
+        "llm-deepseek-v4-flash": 150
+      },
+      "injected_instructions": {
+        "n": 6,
+        "decisions": {
+          "reject": 6
+        },
+        "approved": 0,
+        "reasons": {
+          "missing_field": 4,
+          "prompt_injection": 6
+        }
+      },
+      "adversarial_by_kind": {
+        "edited_amount": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "amount_mismatch": 6,
+            "missing_field": 3
+          }
+        },
+        "wrong_destination": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "missing_field": 4,
+            "destination_mismatch": 6
+          }
+        },
+        "duplicate_operation_id": {
+          "n": 6,
+          "decisions": {
+            "manual_review": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "duplicate_operation_id": 5,
+            "missing_field": 4
+          }
+        },
+        "injected_instruction": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "missing_field": 4,
+            "prompt_injection": 6
+          }
+        },
+        "stale_date": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "stale_date": 6,
+            "missing_field": 3
+          }
+        }
+      },
+      "role": "vision-model"
+    },
+    {
+      "extractor": "llm-qwen3.8-flash",
+      "dataset": "synthetic v1",
+      "field_accuracy": 0.9466666666666667,
+      "field_accuracy_readable": 0.9983333333333333,
+      "per_field": {
+        "amount": 1.0,
+        "amount_detail": 1.0,
+        "transferred_at": 1.0,
+        "sender_name": 1.0,
+        "sender_bank": 0.9933333333333333,
+        "destination": 0.9933333333333333,
+        "operation_id": 1.0,
+        "issuer": 0.5333333333333333,
+        "memo": 1.0
+      },
+      "total_tokens": 235691,
+      "total_cost_usd": "0",
+      "n": 150,
+      "approve_precision": 1.0,
+      "approve_recall": 0.5583333333333333,
+      "approve_f1": 0.7165775401069518,
+      "false_approvals": 0,
+      "false_approval_rate": 0.0,
+      "adversarial_n": 30,
+      "adversarial_false_approvals": 0,
+      "adversarial_false_approval_rate": 0.0,
+      "manual_reviews": 59,
+      "manual_review_rate": 0.3933333333333333,
+      "approval_rate": 0.44666666666666666,
+      "coverage": 0.5733333333333334,
+      "latency_mean_ms": 10833.977757906832,
+      "latency_p50_ms": 9133.504206998623,
+      "latency_p95_ms": 21759.806326997932,
+      "prompt_tokens": 139352,
+      "completion_tokens": 96339,
+      "extractor_errors": 0,
+      "extractor_usage": {
+        "llm-qwen3.8-flash": 150
+      },
+      "injected_instructions": {
+        "n": 6,
+        "decisions": {
+          "reject": 6
+        },
+        "approved": 0,
+        "reasons": {
+          "prompt_injection": 6,
+          "missing_field": 3
+        }
+      },
+      "adversarial_by_kind": {
+        "edited_amount": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "amount_mismatch": 6,
+            "missing_field": 3
+          }
+        },
+        "wrong_destination": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "destination_mismatch": 6,
+            "missing_field": 2
+          }
+        },
+        "duplicate_operation_id": {
+          "n": 6,
+          "decisions": {
+            "manual_review": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "duplicate_operation_id": 6
+          }
+        },
+        "injected_instruction": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "prompt_injection": 6,
+            "missing_field": 3
+          }
+        },
+        "stale_date": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "stale_date": 6,
+            "missing_field": 3
+          }
+        }
+      },
+      "role": "vision-model"
+    },
+    {
+      "extractor": "llm-mimo-v2.6-flash",
+      "dataset": "synthetic v1",
+      "field_accuracy": 0.9370370370370371,
+      "field_accuracy_readable": 0.9966666666666667,
+      "per_field": {
+        "amount": 1.0,
+        "amount_detail": 1.0,
+        "transferred_at": 1.0,
+        "sender_name": 1.0,
+        "sender_bank": 1.0,
+        "destination": 0.9866666666666667,
+        "operation_id": 1.0,
+        "issuer": 0.46,
+        "memo": 0.9866666666666667
+      },
+      "total_tokens": 162709,
+      "total_cost_usd": "0",
+      "n": 150,
+      "approve_precision": 1.0,
+      "approve_recall": 0.48333333333333334,
+      "approve_f1": 0.6516853932584269,
+      "false_approvals": 0,
+      "false_approval_rate": 0.0,
+      "adversarial_n": 30,
+      "adversarial_false_approvals": 0,
+      "adversarial_false_approval_rate": 0.0,
+      "manual_reviews": 67,
+      "manual_review_rate": 0.44666666666666666,
+      "approval_rate": 0.38666666666666666,
+      "coverage": 0.47333333333333333,
+      "latency_mean_ms": 14180.147161626373,
+      "latency_p50_ms": 10876.417182997102,
+      "latency_p95_ms": 32858.716257003834,
+      "prompt_tokens": 124587,
+      "completion_tokens": 38122,
+      "extractor_errors": 0,
+      "extractor_usage": {
+        "llm-mimo-v2.6-flash": 150
+      },
+      "injected_instructions": {
+        "n": 6,
+        "decisions": {
+          "reject": 6
+        },
+        "approved": 0,
+        "reasons": {
+          "prompt_injection": 6,
+          "missing_field": 4
+        }
+      },
+      "adversarial_by_kind": {
+        "edited_amount": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "amount_mismatch": 6,
+            "missing_field": 3
+          }
+        },
+        "wrong_destination": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "destination_mismatch": 6,
+            "missing_field": 4
+          }
+        },
+        "duplicate_operation_id": {
+          "n": 6,
+          "decisions": {
+            "manual_review": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "duplicate_operation_id": 6,
+            "missing_field": 3
+          }
+        },
+        "injected_instruction": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "prompt_injection": 6,
+            "missing_field": 4
+          }
+        },
+        "stale_date": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "stale_date": 6,
+            "missing_field": 3
+          }
+        }
+      },
+      "role": "vision-model"
+    },
+    {
+      "extractor": "llm-glm5.3-flash",
+      "dataset": "synthetic v1",
+      "field_accuracy": 0.9311111111111112,
+      "field_accuracy_readable": 0.9966666666666667,
+      "per_field": {
+        "amount": 1.0,
+        "amount_detail": 0.9933333333333333,
+        "transferred_at": 1.0,
+        "sender_name": 1.0,
+        "sender_bank": 1.0,
+        "destination": 0.98,
+        "operation_id": 1.0,
+        "issuer": 0.4066666666666667,
+        "memo": 1.0
+      },
+      "total_tokens": 235137,
+      "total_cost_usd": "0",
+      "n": 150,
+      "approve_precision": 0.9795918367346939,
+      "approve_recall": 0.4,
+      "approve_f1": 0.5680473372781065,
+      "false_approvals": 1,
+      "false_approval_rate": 0.03333333333333333,
+      "adversarial_n": 30,
+      "adversarial_false_approvals": 1,
+      "adversarial_false_approval_rate": 0.03333333333333333,
+      "manual_reviews": 75,
+      "manual_review_rate": 0.5,
+      "approval_rate": 0.32,
+      "coverage": 0.4066666666666667,
+      "latency_mean_ms": 10798.406200432704,
+      "latency_p50_ms": 8820.175029992242,
+      "latency_p95_ms": 21210.791996010812,
+      "prompt_tokens": 163950,
+      "completion_tokens": 71187,
+      "extractor_errors": 0,
+      "extractor_usage": {
+        "llm-glm5.3-flash": 150
+      },
+      "injected_instructions": {
+        "n": 6,
+        "decisions": {
+          "reject": 6
+        },
+        "approved": 0,
+        "reasons": {
+          "missing_field": 4,
+          "prompt_injection": 6
+        }
+      },
+      "adversarial_by_kind": {
+        "edited_amount": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "amount_mismatch": 6,
+            "missing_field": 3
+          }
+        },
+        "wrong_destination": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "destination_mismatch": 6,
+            "missing_field": 4
+          }
+        },
+        "duplicate_operation_id": {
+          "n": 6,
+          "decisions": {
+            "manual_review": 5,
+            "approve": 1
+          },
+          "approved": 1,
+          "reasons": {
+            "duplicate_operation_id": 4,
+            "missing_field": 4
+          }
+        },
+        "injected_instruction": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "missing_field": 4,
+            "prompt_injection": 6
+          }
+        },
+        "stale_date": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "stale_date": 6,
+            "missing_field": 3
+          }
+        }
+      },
+      "role": "vision-model"
+    },
+    {
+      "extractor": "llm-qwen3.6",
+      "dataset": "synthetic v1",
+      "field_accuracy": 0.8177777777777778,
+      "field_accuracy_readable": 0.8591666666666666,
+      "per_field": {
+        "amount": 0.86,
+        "amount_detail": 0.86,
+        "transferred_at": 0.86,
+        "sender_name": 0.86,
+        "sender_bank": 0.86,
+        "destination": 0.8333333333333334,
+        "operation_id": 0.8533333333333334,
+        "issuer": 0.4866666666666667,
+        "memo": 0.8866666666666667
+      },
+      "total_tokens": 393081,
+      "total_cost_usd": "0",
+      "n": 150,
+      "approve_precision": 1.0,
+      "approve_recall": 0.5666666666666667,
+      "approve_f1": 0.7234042553191489,
+      "false_approvals": 0,
+      "false_approval_rate": 0.0,
+      "adversarial_n": 30,
+      "adversarial_false_approvals": 0,
+      "adversarial_false_approval_rate": 0.0,
+      "manual_reviews": 60,
+      "manual_review_rate": 0.4,
+      "approval_rate": 0.4533333333333333,
+      "coverage": 0.58,
+      "latency_mean_ms": 31599.66442545294,
+      "latency_p50_ms": 20055.47437099449,
+      "latency_p95_ms": 89658.44922699034,
+      "prompt_tokens": 128912,
+      "completion_tokens": 264169,
+      "extractor_errors": 10,
+      "extractor_usage": {
+        "llm-qwen3.6": 150
+      },
+      "injected_instructions": {
+        "n": 6,
+        "decisions": {
+          "reject": 6
+        },
+        "approved": 0,
+        "reasons": {
+          "prompt_injection": 6,
+          "missing_field": 2
+        }
+      },
+      "adversarial_by_kind": {
+        "edited_amount": {
+          "n": 6,
+          "decisions": {
+            "reject": 5,
+            "manual_review": 1
+          },
+          "approved": 0,
+          "reasons": {
+            "amount_mismatch": 5,
+            "missing_field": 2
+          }
+        },
+        "wrong_destination": {
+          "n": 6,
+          "decisions": {
+            "reject": 4,
+            "manual_review": 2
+          },
+          "approved": 0,
+          "reasons": {
+            "destination_mismatch": 4,
+            "missing_field": 3
+          }
+        },
+        "duplicate_operation_id": {
+          "n": 6,
+          "decisions": {
+            "manual_review": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "duplicate_operation_id": 6,
+            "missing_field": 1
+          }
+        },
+        "injected_instruction": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "prompt_injection": 6,
+            "missing_field": 2
+          }
+        },
+        "stale_date": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "stale_date": 6,
+            "missing_field": 3
+          }
+        }
+      },
+      "role": "vision-model"
+    },
+    {
+      "extractor": "llm-gemma4",
+      "dataset": "synthetic v1",
+      "field_accuracy": 0.8770370370370371,
+      "field_accuracy_readable": 0.9291666666666667,
+      "per_field": {
+        "amount": 0.9333333333333333,
+        "amount_detail": 0.9333333333333333,
+        "transferred_at": 0.9333333333333333,
+        "sender_name": 0.9333333333333333,
+        "sender_bank": 0.9333333333333333,
+        "destination": 0.9,
+        "operation_id": 0.92,
+        "issuer": 0.46,
+        "memo": 0.9466666666666667
+      },
+      "total_tokens": 305980,
+      "total_cost_usd": "0",
+      "n": 150,
+      "approve_precision": 0.9642857142857143,
+      "approve_recall": 0.45,
+      "approve_f1": 0.6136363636363636,
+      "false_approvals": 2,
+      "false_approval_rate": 0.06666666666666667,
+      "adversarial_n": 30,
+      "adversarial_false_approvals": 2,
+      "adversarial_false_approval_rate": 0.06666666666666667,
+      "manual_reviews": 74,
+      "manual_review_rate": 0.49333333333333335,
+      "approval_rate": 0.36,
+      "coverage": 0.4666666666666667,
+      "latency_mean_ms": 28336.962650013254,
+      "latency_p50_ms": 20839.429341009236,
+      "latency_p95_ms": 120100.6954510085,
+      "prompt_tokens": 80780,
+      "completion_tokens": 225200,
+      "extractor_errors": 10,
+      "extractor_usage": {
+        "llm-gemma4": 150
+      },
+      "injected_instructions": {
+        "n": 6,
+        "decisions": {
+          "reject": 5,
+          "manual_review": 1
+        },
+        "approved": 0,
+        "reasons": {
+          "prompt_injection": 5,
+          "missing_field": 3
+        }
+      },
+      "adversarial_by_kind": {
+        "edited_amount": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "amount_mismatch": 6,
+            "missing_field": 3
+          }
+        },
+        "wrong_destination": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "destination_mismatch": 6,
+            "missing_field": 3
+          }
+        },
+        "duplicate_operation_id": {
+          "n": 6,
+          "decisions": {
+            "approve": 2,
+            "manual_review": 4
+          },
+          "approved": 2,
+          "reasons": {
+            "duplicate_operation_id": 4
+          }
+        },
+        "injected_instruction": {
+          "n": 6,
+          "decisions": {
+            "reject": 5,
+            "manual_review": 1
+          },
+          "approved": 0,
+          "reasons": {
+            "prompt_injection": 5,
+            "missing_field": 3
+          }
+        },
+        "stale_date": {
+          "n": 6,
+          "decisions": {
+            "manual_review": 4,
+            "reject": 2
+          },
+          "approved": 0,
+          "reasons": {
+            "missing_field": 6,
+            "stale_date": 2
+          }
+        }
+      },
+      "role": "vision-model"
+    },
+    {
+      "extractor": "cascade",
+      "dataset": "synthetic v1",
+      "field_accuracy": 0.9948148148148148,
+      "field_accuracy_readable": 0.9991666666666666,
+      "per_field": {
+        "amount": 1.0,
+        "amount_detail": 1.0,
+        "transferred_at": 1.0,
+        "sender_name": 1.0,
+        "sender_bank": 0.9933333333333333,
+        "destination": 1.0,
+        "operation_id": 1.0,
+        "issuer": 0.96,
+        "memo": 1.0
+      },
+      "total_tokens": 97007,
+      "total_cost_usd": "0",
+      "n": 150,
+      "approve_precision": 1.0,
+      "approve_recall": 1.0,
+      "approve_f1": 1.0,
+      "false_approvals": 0,
+      "false_approval_rate": 0.0,
+      "adversarial_n": 30,
+      "adversarial_false_approvals": 0,
+      "adversarial_false_approval_rate": 0.0,
+      "manual_reviews": 6,
+      "manual_review_rate": 0.04,
+      "approval_rate": 0.8,
+      "coverage": 1.0,
+      "latency_mean_ms": 8863.652021426533,
+      "latency_p50_ms": 10284.904468004243,
+      "latency_p95_ms": 18189.267392997863,
+      "prompt_tokens": 61418,
+      "completion_tokens": 35589,
+      "extractor_errors": 0,
+      "extractor_usage": {
+        "llm-primary": 70,
+        "llm-secondary": 15,
+        "ocr": 65
+      },
+      "injected_instructions": {
+        "n": 6,
+        "decisions": {
+          "reject": 6
+        },
+        "approved": 0,
+        "reasons": {
+          "prompt_injection": 6
+        }
+      },
+      "adversarial_by_kind": {
+        "edited_amount": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "amount_mismatch": 6
+          }
+        },
+        "wrong_destination": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "destination_mismatch": 6
+          }
+        },
+        "duplicate_operation_id": {
+          "n": 6,
+          "decisions": {
+            "manual_review": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "duplicate_operation_id": 6
+          }
+        },
+        "injected_instruction": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "prompt_injection": 6
+          }
+        },
+        "stale_date": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "stale_date": 6
+          }
+        }
+      },
+      "role": "cascade"
+    }
+  ]
+}
