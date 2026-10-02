@@ -17,7 +17,8 @@ from __future__ import annotations
 import base64
 import json
 import re
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Final, Protocol
@@ -27,11 +28,14 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from receipt_verifier.confidence import SourceQuality, score_extraction
 from receipt_verifier.extraction import ExtractionResult
+from receipt_verifier.ratelimit import RequestLimiter, retry_after_seconds
 
 LLM_EXTRACTOR_NAME: Final = "llm"
 DEFAULT_BASE_URL: Final = "https://api.nan.builders/v1"
 DEFAULT_TIMEOUT_SECONDS: Final = 30.0
 DEFAULT_MAX_RETRIES: Final = 1
+DEFAULT_MAX_RATE_LIMIT_RETRIES: Final = 8
+DEFAULT_RATE_LIMIT_WAIT_SECONDS: Final = 5.0
 DEFAULT_SOURCE_QUALITY: Final = 0.85
 
 SYSTEM_PROMPT: Final = """\
@@ -95,6 +99,10 @@ class LlmResponseError(RuntimeError):
 
 class LlmTransportError(RuntimeError):
     """The provider could not be reached or timed out."""
+
+
+class LlmRateLimitError(LlmTransportError):
+    """The provider kept answering 429 after every bounded retry."""
 
 
 class LlmDestination(BaseModel):
@@ -196,11 +204,29 @@ class LlmConfig:
 
 
 class HttpLlmTransport:
-    """OpenAI-compatible ``/chat/completions`` client backed by httpx."""
+    """OpenAI-compatible ``/chat/completions`` client backed by httpx.
 
-    def __init__(self, config: LlmConfig, *, client: httpx.Client | None = None) -> None:
+    A ``429`` is a pacing problem, not an extractor failure: the call is retried after
+    the wait the provider asks for (``Retry-After`` or a reset header), bounded by
+    ``max_rate_limit_retries``. An optional :class:`RequestLimiter` keeps a rolling
+    per-minute budget so the run never bursts the shared key in the first place.
+    """
+
+    def __init__(
+        self,
+        config: LlmConfig,
+        *,
+        client: httpx.Client | None = None,
+        limiter: RequestLimiter | None = None,
+        max_rate_limit_retries: int = DEFAULT_MAX_RATE_LIMIT_RETRIES,
+        sleep: Callable[[float], None] | None = None,
+    ) -> None:
         self._config = config
         self._client: httpx.Client | None = client
+        self._limiter = limiter
+        self._max_rate_limit_retries = max(0, max_rate_limit_retries)
+        self._sleep = sleep or time.sleep
+        self._rate_limit_waits = 0.0
 
     def _http(self) -> httpx.Client:
         client = self._client
@@ -208,6 +234,44 @@ class HttpLlmTransport:
             client = build_http_client(self._config)
             self._client = client
         return client
+
+    def rate_limit_waits_seconds(self) -> float:
+        """Total time this transport spent waiting out ``429`` answers."""
+        return self._rate_limit_waits
+
+    def _post(self, payload: dict[str, object], timeout_seconds: float) -> object:
+        attempts = 0
+        while True:
+            if self._limiter is not None:
+                self._limiter.acquire()
+            try:
+                response = self._http().post(
+                    "/chat/completions", json=payload, timeout=timeout_seconds
+                )
+                if response.status_code == 429:
+                    wait = retry_after_seconds(response.headers)
+                    if wait is None:
+                        wait = (
+                            self._limiter.seconds_until_slot()
+                            if self._limiter is not None
+                            else DEFAULT_RATE_LIMIT_WAIT_SECONDS
+                        )
+                    if attempts >= self._max_rate_limit_retries:
+                        raise LlmRateLimitError(
+                            "provider kept rate limiting after "
+                            f"{self._max_rate_limit_retries} retries "
+                            f"({self._rate_limit_waits:.1f}s waited)"
+                        )
+                    attempts += 1
+                    self._rate_limit_waits += wait
+                    self._sleep(wait)
+                    continue
+                response.raise_for_status()
+                return response.json()
+            except LlmRateLimitError:
+                raise
+            except Exception as exc:  # transport-level failure: the cascade moves on
+                raise LlmTransportError(str(exc)) from exc
 
     def complete(
         self,
@@ -239,12 +303,7 @@ class HttpLlmTransport:
         }
         if self._config.json_mode:
             payload["response_format"] = {"type": "json_object"}
-        try:
-            response = self._http().post("/chat/completions", json=payload, timeout=timeout_seconds)
-            response.raise_for_status()
-            raw_body = response.json()
-        except Exception as exc:  # transport-level failure: the cascade must move on
-            raise LlmTransportError(str(exc)) from exc
+        raw_body = self._post(payload, timeout_seconds)
         try:
             body = LlmResponse.model_validate(raw_body)
             message = body.choices[0].message.content
@@ -367,7 +426,9 @@ class VisionLlmExtractor:
 
 __all__ = [
     "DEFAULT_BASE_URL",
+    "DEFAULT_MAX_RATE_LIMIT_RETRIES",
     "DEFAULT_MAX_RETRIES",
+    "DEFAULT_RATE_LIMIT_WAIT_SECONDS",
     "DEFAULT_TIMEOUT_SECONDS",
     "LLM_EXTRACTOR_NAME",
     "RETRY_PROMPT",
@@ -379,6 +440,7 @@ __all__ = [
     "LlmConfig",
     "LlmDestination",
     "LlmPrices",
+    "LlmRateLimitError",
     "LlmReceiptPayload",
     "LlmResponse",
     "LlmResponseError",

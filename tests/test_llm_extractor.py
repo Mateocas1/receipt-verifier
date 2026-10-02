@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 
+import httpx
 import pytest
 
 from receipt_verifier.extractors.llm import (
@@ -13,6 +14,7 @@ from receipt_verifier.extractors.llm import (
     LlmCompletion,
     LlmConfig,
     LlmPrices,
+    LlmRateLimitError,
     LlmResponseError,
     LlmTransportError,
     VisionLlmExtractor,
@@ -244,3 +246,123 @@ class TestHttpTransport:
                 media_type="image/png",
                 timeout_seconds=1.0,
             )
+
+
+class RateLimitedResponse:
+    """Minimal httpx.Response stand-in for the rate-limit paths."""
+
+    def __init__(
+        self,
+        status_code: int,
+        *,
+        body: dict[str, object] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        self.status_code = status_code
+        self.headers = headers or {}
+        self._body = body or {}
+
+    def json(self) -> dict[str, object]:
+        return self._body
+
+    def raise_for_status(self) -> None:
+        if self.status_code < 400:
+            return
+        request = httpx.Request("POST", "https://example.test/v1/chat/completions")
+        response = httpx.Response(self.status_code, request=request)
+        raise httpx.HTTPStatusError("boom", request=request, response=response)
+
+
+class ScriptedHttpClient:
+    """Returns queued responses (or raises queued exceptions), counting calls."""
+
+    def __init__(self, *results: RateLimitedResponse | Exception) -> None:
+        self.results = list(results)
+        self.calls = 0
+
+    def post(self, *args: object, **kwargs: object) -> RateLimitedResponse:
+        self.calls += 1
+        result = self.results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+class CountingLimiter:
+    def __init__(self, wait: float = 0.0) -> None:
+        self.acquires = 0
+        self.wait = wait
+
+    def acquire(self) -> None:
+        self.acquires += 1
+
+    def seconds_until_slot(self) -> float:
+        return self.wait
+
+
+def ok_body() -> dict[str, object]:
+    return {
+        "choices": [{"message": {"content": json.dumps(PAYLOAD)}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+    }
+
+
+def call_transport(transport: HttpLlmTransport) -> LlmCompletion:
+    return transport.complete(
+        model="m",
+        system="s",
+        prompt="p",
+        image_base64="",
+        media_type="image/png",
+        timeout_seconds=1.0,
+    )
+
+
+class TestHttpTransportRateLimits:
+    def test_429_with_retry_after_is_waited_out_then_succeeds(self) -> None:
+        client = ScriptedHttpClient(
+            RateLimitedResponse(429, headers={"Retry-After": "2"}),
+            RateLimitedResponse(200, body=ok_body()),
+        )
+        slept: list[float] = []
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client, sleep=slept.append)
+        completion = call_transport(transport)
+        assert completion.text == json.dumps(PAYLOAD)
+        assert client.calls == 2
+        assert slept == [2.0]
+        assert transport.rate_limit_waits_seconds() == 2.0
+
+    def test_429_without_header_falls_back_to_the_limiter(self) -> None:
+        client = ScriptedHttpClient(
+            RateLimitedResponse(429),
+            RateLimitedResponse(200, body=ok_body()),
+        )
+        slept: list[float] = []
+        pacing = CountingLimiter(wait=3.0)
+        transport = HttpLlmTransport(
+            LlmConfig(api_key="k"), client=client, limiter=pacing, sleep=slept.append
+        )
+        call_transport(transport)
+        assert slept == [3.0]
+        assert pacing.acquires == 2
+
+    def test_persistent_429_finally_raises_a_rate_limit_error(self) -> None:
+        client = ScriptedHttpClient(
+            RateLimitedResponse(429, headers={"Retry-After": "1"}),
+            RateLimitedResponse(429, headers={"Retry-After": "1"}),
+            RateLimitedResponse(429, headers={"Retry-After": "1"}),
+        )
+        slept: list[float] = []
+        transport = HttpLlmTransport(
+            LlmConfig(api_key="k"), client=client, max_rate_limit_retries=2, sleep=slept.append
+        )
+        with pytest.raises(LlmRateLimitError):
+            call_transport(transport)
+        assert client.calls == 3
+        assert slept == [1.0, 1.0]
+
+    def test_server_error_is_still_a_transport_error(self) -> None:
+        client = ScriptedHttpClient(RateLimitedResponse(500))
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client)
+        with pytest.raises(LlmTransportError):
+            call_transport(transport)
