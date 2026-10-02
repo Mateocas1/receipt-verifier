@@ -26,6 +26,7 @@ from tests.helpers import StubExtractor, reading
 
 TOKEN = "service-token-123"
 PNG = b"\x89PNG\r\n\x1a\n" + b"synthetic-body" * 40
+OTHER_PNG = b"\x89PNG\r\n\x1a\n" + b"another-synthetic-body" * 30
 DESTINATION = {"kind": "alias", "value": "camila.gomez.ar"}
 PAYMENT = {"payment_id": "pay-1", "amount": "2500.00", "destination": DESTINATION}
 ALLOWED = parse_allowed_destinations("alias:camila.gomez.ar")
@@ -251,11 +252,37 @@ class TestCascadeIntegration:
 
     def test_duplicate_operation_id_across_requests_needs_a_human(self) -> None:
         test_client = client(stub("ocr"))
-        first = post_json(test_client).json()
-        second = post_json(test_client).json()
+        first = post_json(test_client, PNG).json()
+        second = post_json(test_client, OTHER_PNG).json()
         assert first["decision"] == "approve"
         assert second["decision"] == "manual_review"
         assert second["reasons"] == ["duplicate_operation_id"]
+
+    def test_a_byte_identical_replay_is_rejected(self) -> None:
+        """The same document twice is proof, not inference: the stored hash matches."""
+        test_client = client(stub("ocr"))
+        assert post_json(test_client, PNG).json()["decision"] == "approve"
+        replay = post_json(test_client, PNG).json()
+        assert replay["decision"] == "reject"
+        assert "duplicate_operation_id" in replay["reasons"]
+        assert "identical_receipt_replay" in replay["reasons"]
+
+    def test_a_replay_of_a_reviewed_receipt_is_never_approved(self) -> None:
+        """The corner that produced the live false approvals.
+
+        The first receipt is routed to a human (unreadable issuer) but its operation id
+        has still been seen; the second arrival is a complete reading that would otherwise
+        be approved. It must not be.
+        """
+        test_client = client(stub("ocr", missing="issuer"))
+        reviewed = post_json(test_client, PNG).json()
+        assert reviewed["decision"] == "manual_review"
+        assert "missing_field" in reviewed["reasons"]
+
+        test_client.app.state.extractor = stub("ocr")
+        replayed = post_json(test_client, OTHER_PNG).json()
+        assert replayed["decision"] == "manual_review"
+        assert replayed["reasons"] == ["duplicate_operation_id"]
 
     def test_health_reports_breaker_state(self) -> None:
         cascade = CascadeExtractor([stub("ocr")])
@@ -380,10 +407,10 @@ class TestOpenApi:
 
     def test_seen_registry_is_bounded(self) -> None:
         test_client = client(stub("ocr"), seen_operation_ids_max=1)
-        first = post_json(test_client).json()
+        first = post_json(test_client, PNG).json()
         assert first["decision"] == "approve"
         # Only one id is remembered, so the replay is still caught (same id) ...
-        assert post_json(test_client).json()["decision"] == "manual_review"
+        assert post_json(test_client, OTHER_PNG).json()["decision"] == "manual_review"
         # ... and the registry never grows past its limit.
         assert len(test_client.app.state.seen) == 1
 

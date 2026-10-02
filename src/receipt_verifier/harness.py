@@ -22,6 +22,7 @@ from receipt_verifier.metrics import (
     evaluate_sample,
     format_rate,
 )
+from receipt_verifier.replay import receipt_hash
 from receipt_verifier.validate import ReceiptValidator, ValidationPolicy
 
 
@@ -58,12 +59,13 @@ def run_evaluation(
     active_policy = policy or ValidationPolicy()
     validator = ReceiptValidator(dataset.allowed_destinations, active_policy)
     evaluation_at = now or dataset.evaluation_at
-    seen_operation_ids: set[str] = set()
+    seen_operation_ids: dict[str, str] = {}
     outcomes: list[SampleOutcome] = []
     total = len(dataset.labels)
 
     for index, label in enumerate(dataset.labels, start=1):
         image = dataset.image_bytes(label)
+        image_hash = receipt_hash(image)
         started = perf_counter()
         extraction = extractor.extract(image)
         latency_ms = (perf_counter() - started) * 1000.0
@@ -72,12 +74,14 @@ def run_evaluation(
             label.expectation,
             now=evaluation_at,
             seen_operation_ids=seen_operation_ids,
+            receipt_hash=image_hash,
         )
-        approved_operation_id = extraction.operation_id.value
-        if validation.approved and approved_operation_id is not None:
-            # Mirror the real write path: only approved receipts reach the ledger, so
-            # only they can make a later replay look like a duplicate.
-            seen_operation_ids.add(approved_operation_id)
+        extracted_operation_id = extraction.operation_id.value
+        if extracted_operation_id is not None:
+            # Every receipt the pipeline has seen is remembered, whatever the verdict: a
+            # receipt routed to a human is still one a human will act on, so a replay of
+            # it must not look fresh.
+            seen_operation_ids.setdefault(extracted_operation_id, image_hash)
         outcomes.append(
             evaluate_sample(
                 label,

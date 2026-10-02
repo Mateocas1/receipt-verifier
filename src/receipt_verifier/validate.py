@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
@@ -65,12 +65,18 @@ HARD_REJECT_REASONS: frozenset[VerdictReason] = frozenset(
     {
         VerdictReason.AMOUNT_MISMATCH,
         VerdictReason.DESTINATION_MISMATCH,
+        VerdictReason.IDENTICAL_RECEIPT_REPLAY,
         VerdictReason.STALE_DATE,
         VerdictReason.FUTURE_DATE,
         VerdictReason.PROMPT_INJECTION,
     }
 )
-"""Reasons that are evidence of an invalid or hostile receipt."""
+"""Reasons that are evidence of an invalid or hostile receipt.
+
+``IDENTICAL_RECEIPT_REPLAY`` is hard because byte-identical arrival of a document already
+processed under the same operation id is not a retry with a new image; the byte-identical
+original is preserved in the registry, so the identification is exact, not inferred.
+"""
 
 
 def severity_of(reason: VerdictReason) -> ReasonSeverity:
@@ -160,7 +166,8 @@ class ReceiptValidator:
         expectation: LedgerEntry | None,
         *,
         now: datetime,
-        seen_operation_ids: Iterable[str] = (),
+        seen_operation_ids: Mapping[str, str] | None = None,
+        receipt_hash: str | None = None,
     ) -> ValidationResult:
         """Validate one extraction against its expected payment and the running state.
 
@@ -169,11 +176,17 @@ class ReceiptValidator:
         cannot be verified, which is reported as ``unverified_payment`` and routes the
         verdict to ``manual_review``: the service never approves on the receipt's word
         alone.
+
+        ``seen_operation_ids`` maps every operation id the pipeline has already extracted
+        to the hash of the first image that carried it, whatever verdict that receipt got.
+        Reusing an operation id is never approved: a different image is routed to a human
+        (``duplicate_operation_id``) and the identical image is rejected
+        (``identical_receipt_replay``) because byte equality is proof, not inference.
         """
         if now.tzinfo is None:
             raise ValueError("now must be timezone-aware")
 
-        seen = frozenset(seen_operation_ids)
+        seen = dict(seen_operation_ids or {})
         fields = extraction.field_map()
         checks: dict[str, bool] = {}
         reasons: list[VerdictReason] = []
@@ -273,11 +286,17 @@ class ReceiptValidator:
             # of anything, and a second reason would only add noise for the reviewer.
             checks["operation_id_unique"] = False
         else:
-            record(
-                "operation_id_unique",
-                operation_id not in seen,
-                VerdictReason.DUPLICATE_OPERATION_ID,
-            )
+            first_seen_hash = seen.get(operation_id)
+            if first_seen_hash is None:
+                checks["operation_id_unique"] = True
+            else:
+                record("operation_id_unique", False, VerdictReason.DUPLICATE_OPERATION_ID)
+                if receipt_hash is not None and receipt_hash == first_seen_hash:
+                    record(
+                        "receipt_not_a_replay",
+                        False,
+                        VerdictReason.IDENTICAL_RECEIPT_REPLAY,
+                    )
 
         return ValidationResult(decision=decide(reasons), reasons=tuple(reasons), checks=checks)
 

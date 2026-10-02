@@ -21,13 +21,13 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from receipt_verifier.circuit import CircuitStatus
 from receipt_verifier.extraction import ReceiptExtractor
 from receipt_verifier.extractors.cascade import CascadeExtractor
+from receipt_verifier.replay import SeenOperationIds, receipt_hash
 from receipt_verifier.schema import AR_TZ, LedgerEntry, VerdictReason
 from receipt_verifier.service.imaging import (
     ImageRejected,
     decode_base64_image,
     validate_image,
 )
-from receipt_verifier.service.registry import SeenOperationIds
 from receipt_verifier.service.schemas import (
     PaymentInput,
     ReceiptRequest,
@@ -191,6 +191,7 @@ def create_app(
 
         extractor = extractor_for_request(request)
         extraction = extractor.extract(image)
+        image_hash = receipt_hash(image)
 
         now = datetime.now(tz=AR_TZ)
         expectation: LedgerEntry | None = payment.to_ledger_entry(now=now) if payment else None
@@ -200,13 +201,16 @@ def create_app(
             expectation,
             now=now,
             seen_operation_ids=seen.snapshot(),
+            receipt_hash=image_hash,
         )
         reasons = list(validation.reasons)
         if extraction.extractor == "none" and VerdictReason.EXTRACTION_FAILED not in reasons:
             # Every stage failed: say so explicitly, on top of the missing-field reason.
             reasons.insert(0, VerdictReason.EXTRACTION_FAILED)
-        if validation.approved and extraction.operation_id.value:
-            seen.add(extraction.operation_id.value)
+        if extraction.operation_id.value:
+            # Whatever the verdict: a receipt a human will review is still a receipt that
+            # has been seen, and its replay must not look fresh.
+            seen.record(extraction.operation_id.value, image_hash)
 
         attempted: tuple[str, ...] = ()
         if isinstance(extractor, CascadeExtractor) and extractor.last_outcome is not None:

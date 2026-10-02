@@ -66,6 +66,7 @@ class VerdictReason(StrEnum):
     AMOUNT_MISMATCH = "amount_mismatch"
     DESTINATION_MISMATCH = "destination_mismatch"
     DUPLICATE_OPERATION_ID = "duplicate_operation_id"
+    IDENTICAL_RECEIPT_REPLAY = "identical_receipt_replay"
     STALE_DATE = "stale_date"
     FUTURE_DATE = "future_date"
     PROMPT_INJECTION = "prompt_injection"
