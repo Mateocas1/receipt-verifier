@@ -191,19 +191,20 @@ def _ms_cell(value: Any) -> str:
 def render_markdown(runs: Sequence[Mapping[str, Any]]) -> str:
     """The README comparison table, rendered from the summary rows."""
     header = (
-        "| Extractor | Field accuracy | approve precision | approve recall | "
+        "| Extractor | Dataset | Field accuracy | approve precision | approve recall | "
         "False approvals (adversarial) | Manual review | Latency p50 / p95 | Tokens/receipt |"
     )
-    divider = "| --- | --- | --- | --- | --- | --- | --- | --- |"
+    divider = "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     lines = [header, divider]
     for run in runs:
         tokens = run.get("total_tokens") or 0
         n = run.get("n") or 0
         per_receipt = f"{tokens / n:.0f}" if n else "n/a"
         lines.append(
-            "| `{extractor}` | {field} | {precision} | {recall} | {false_approvals} "
+            "| `{extractor}` | {dataset} | {field} | {precision} | {recall} | {false_approvals} "
             "({adv}/{adv_n}) | {manual} | {p50} / {p95} | {tokens} |".format(
                 extractor=run.get("extractor", "?"),
+                dataset=run.get("dataset", "?"),
                 field=_rate_cell(run.get("field_accuracy_readable") or run.get("field_accuracy")),
                 precision=_rate_cell(run.get("approve_precision")),
                 recall=_rate_cell(run.get("approve_recall")),

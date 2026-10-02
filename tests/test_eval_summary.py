@@ -131,6 +131,18 @@ class TestMarkdown:
         assert "| `llm-b` |" in table
         assert table.count("\n") == 3  # header + divider + two rows
 
+    def test_the_dataset_is_a_column(self) -> None:
+        """The same model measured on two dataset versions must stay distinguishable."""
+        report = make_report()
+        report["dataset_version"] = "v1"
+        v1 = summarize_report(report)
+        report["dataset_version"] = "v2"
+        v2 = summarize_report(report)
+        table = render_markdown([v1, v2])
+        assert "| Dataset |" in table
+        assert "| synthetic v1 |" in table
+        assert "| synthetic v2 |" in table
+
     def test_tokens_are_shown_per_receipt(self) -> None:
         table = render_markdown([summarize_report(make_report())])
         assert "| 333 |" in table
