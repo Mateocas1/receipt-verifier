@@ -362,10 +362,11 @@ Undefined rates (no positive predictions, empty dataset) are reported as `n/a`, 
 
 ## Results (synthetic set)
 
-Every row below is a real provider run on 150 receipts (30 adversarial), one request at a time:
-`EVAL_RPM=20`, `LLM_MAX_TOKENS=3000`, `LLM_TIMEOUT_SECONDS=120`, `temperature=0`. The
-`synthetic/v1` block is the first sweep and is kept for comparison; the `synthetic/v2` block is
-the follow-up on the dataset that prints the published issuer name (see the dataset section).
+Every LLM row below is a real provider run on 150 receipts (30 adversarial), one request at a
+time: `EVAL_RPM=20`, `LLM_MAX_TOKENS=3000`, `LLM_TIMEOUT_SECONDS=120`, `temperature=0`; the
+`dummy` and `ocr` rows are local runs of the same set. The `synthetic/v1` block is the first
+sweep and is kept for comparison; the `synthetic/v2` block is the follow-up on the dataset that
+prints the published issuer name (see the dataset section).
 The raw per-sample reports stay under the gitignored `reports/`; the committed
 [`results/llm-eval.json`](results/llm-eval.json) is the summary these tables are rendered from,
 and `scripts/summarize_llm_eval.py --markdown` re-renders them, so the table cannot drift from
