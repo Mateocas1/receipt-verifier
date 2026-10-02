@@ -103,6 +103,21 @@ def is_valid_alias(value: str) -> bool:
     return bool(_ALIAS_RE.match(value)) and not value.isdigit()
 
 
+def is_valid_destination(kind: str, value: str) -> bool:
+    """True when ``value`` satisfies the printed format rule for ``kind``.
+
+    ``kind`` is the lower-case token a receipt prints (``alias``/``cvu``/``cbu``). An
+    alias is checked by syntax; a CBU/CVU by its two BCRA check digits. Any other kind is
+    not a destination, so it is rejected instead of guessed.
+    """
+    normalized = kind.strip().lower()
+    if normalized == "alias":
+        return is_valid_alias(value)
+    if normalized in {"cvu", "cbu"}:
+        return is_valid_cbu_or_cvu(value)
+    return False
+
+
 def quantize_amount(value: Decimal) -> Decimal:
     """Round a money value to two decimals with banker-free half-up rounding."""
     return value.quantize(CENTS, rounding=ROUND_HALF_UP)
@@ -120,7 +135,8 @@ def render_amount_ars(value: Decimal) -> str:
 
 _AMOUNT_TOKEN_RE: Final = re.compile(r"^-?\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?$|^-?\d+(?:,\d{1,2})?$")
 
-_DESTINATION_KINDS: Final = frozenset({"alias", "cvu", "cbu"})
+DESTINATION_KINDS: Final = frozenset({"alias", "cvu", "cbu"})
+"""Printed destination tokens the parser and the format rule understand."""
 
 
 def parse_destination_text(text: str) -> tuple[str, str] | None:
@@ -136,7 +152,7 @@ def parse_destination_text(text: str) -> tuple[str, str] | None:
         return None
     head, _, tail = cleaned.partition(" ")
     kind = head.strip().lower()
-    if kind in _DESTINATION_KINDS and tail.strip():
+    if kind in DESTINATION_KINDS and tail.strip():
         # OCR happily splits "2852 240785731632146398" or "camila .ojeda.pago".
         return kind, "".join(tail.split()).strip(",.;")
     token = "".join(cleaned.split()).strip(",.;")
