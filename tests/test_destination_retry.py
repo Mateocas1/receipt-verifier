@@ -87,6 +87,14 @@ class TestTrigger:
         assert retry.retries == 0
         assert result.destination.value == ALIAS_DESTINATION
 
+    def test_a_failed_extraction_is_not_re_asked(self) -> None:
+        # a reading with an error is not a misread destination: there is nothing to correct
+        failed = reading(None).model_copy(update={"error": "LlmTransportError: HTTP 502"})
+        refiner = FakeRefiner(ALIAS_DESTINATION)
+        retry, _ = wrapper(failed, refiner)
+        assert retry.extract(b"image") is failed
+        assert refiner.calls == 0
+
     def test_an_unusable_destination_is_re_asked_once(self) -> None:
         refiner = FakeRefiner(ALIAS_DESTINATION)
         retry, _ = wrapper(reading(None), refiner)

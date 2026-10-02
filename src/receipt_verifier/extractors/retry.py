@@ -61,6 +61,10 @@ class DestinationRetryExtractor:
     def extract(self, image: bytes) -> ExtractionResult:
         """Read once, and re-ask for the destination only when the code cannot accept it."""
         reading = self.inner.extract(image)
+        if reading.error:
+            # The extractor failed instead of returning a reading: no destination was
+            # misread, and a second call would only repeat the failure.
+            return reading
         reason = self._reason(reading.destination)
         if reason is None or self.refiner is None:
             return reading
