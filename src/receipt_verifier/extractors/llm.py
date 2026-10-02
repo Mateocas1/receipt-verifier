@@ -239,6 +239,11 @@ class HttpLlmTransport:
         """Total time this transport spent waiting out ``429`` answers."""
         return self._rate_limit_waits
 
+    @property
+    def limiter(self) -> RequestLimiter | None:
+        """The pacing limiter shared by the stages built from one configuration."""
+        return self._limiter
+
     def _post(self, payload: dict[str, object], timeout_seconds: float) -> object:
         attempts = 0
         while True:
@@ -388,12 +393,19 @@ class VisionLlmExtractor:
     def model(self) -> str:
         return self._model
 
+    @property
+    def transport(self) -> LlmTransport:
+        """The provider client this extractor calls (inspectable for pacing stats)."""
+        return self._transport
+
     def extract(self, image: bytes) -> ExtractionResult:
         image_base64 = base64.b64encode(image).decode("ascii")
         media_type = media_type_of(image)
         prompt = "Extract the fields from this receipt image. Reply with JSON only."
         last_error: LlmResponseError | None = None
         cost = Decimal("0")
+        prompt_tokens = 0
+        completion_tokens = 0
         for _ in range(self._max_retries + 1):
             completion = self._transport.complete(
                 model=self._model,
@@ -404,6 +416,8 @@ class VisionLlmExtractor:
                 timeout_seconds=self._timeout,
             )
             cost += self._prices.cost(completion)
+            prompt_tokens += completion.prompt_tokens
+            completion_tokens += completion.completion_tokens
             try:
                 payload = parse_payload(completion.text)
             except LlmResponseError as exc:
@@ -416,6 +430,8 @@ class VisionLlmExtractor:
                 raw_text=completion.text,
                 source_quality=self._quality,
                 cost_usd=cost,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
             )
         raise last_error or LlmResponseError("model answer could not be parsed")
 

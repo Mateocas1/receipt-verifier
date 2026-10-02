@@ -71,6 +71,8 @@ class ExtractionResult(BaseModel):
     raw_text: str = ""
     latency_ms: float = 0.0
     cost_usd: Decimal = Decimal("0")
+    prompt_tokens: int = Field(default=0, ge=0)
+    completion_tokens: int = Field(default=0, ge=0)
 
     def field_map(self) -> dict[str, ExtractedField[Any]]:
         """Mapping of canonical field name to its extraction, in ``FIELD_NAMES`` order."""

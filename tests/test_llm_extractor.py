@@ -194,6 +194,18 @@ class TestExtraction:
         result = engine.extract(IMAGE)
         assert result.cost_usd == Decimal("0.013")  # 1000 in @0.01 + 100 out @0.03
 
+    def test_token_usage_is_carried_on_the_result(self) -> None:
+        engine, _ = extractor(json.dumps(PAYLOAD))
+        result = engine.extract(IMAGE)
+        assert result.prompt_tokens == 1000
+        assert result.completion_tokens == 100
+
+    def test_token_usage_accumulates_across_retries(self) -> None:
+        engine, _ = extractor("not json", json.dumps(PAYLOAD))
+        result = engine.extract(IMAGE)
+        assert result.prompt_tokens == 2000
+        assert result.completion_tokens == 200
+
     def test_default_pricing_reports_zero(self) -> None:
         engine, _ = extractor(json.dumps(PAYLOAD))
         assert engine.extract(IMAGE).cost_usd == 0

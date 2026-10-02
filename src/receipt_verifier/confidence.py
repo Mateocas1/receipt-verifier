@@ -251,6 +251,8 @@ def score_extraction(
     source_quality: SourceQuality | None = None,
     latency_ms: float = 0.0,
     cost_usd: Decimal = Decimal("0"),
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
 ) -> ExtractionResult:
     """Turn raw candidate values into an :class:`ExtractionResult` with code-owned scores."""
     quality = source_quality or SourceQuality()
@@ -269,6 +271,8 @@ def score_extraction(
         raw_text=raw_text,
         latency_ms=latency_ms,
         cost_usd=cost_usd,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
     )
 
 

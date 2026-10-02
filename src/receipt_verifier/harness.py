@@ -148,6 +148,9 @@ def render_table(report: EvaluationReport) -> str:
         ("latency p95 ms", f"{metrics.latency_p95_ms:.2f}"),
         ("total cost usd", f"{metrics.total_cost_usd:.6f}"),
         ("mean cost usd", f"{metrics.mean_cost_usd:.6f}"),
+        ("prompt tokens", str(metrics.prompt_tokens)),
+        ("completion tokens", str(metrics.completion_tokens)),
+        ("total tokens", str(metrics.prompt_tokens + metrics.completion_tokens)),
     ]
     lines.append("")
     for name, value in rows:
