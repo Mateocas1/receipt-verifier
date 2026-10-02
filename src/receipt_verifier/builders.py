@@ -18,6 +18,7 @@ def build_extraction(
     cost_usd: Decimal = Decimal("0"),
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
+    error: str = "",
 ) -> ExtractionResult:
     """Build an :class:`ExtractionResult` from raw values.
 
@@ -36,6 +37,7 @@ def build_extraction(
         "cost_usd": cost_usd,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "error": error,
     }
     for name in FIELD_NAMES:
         raw = values.get(name)

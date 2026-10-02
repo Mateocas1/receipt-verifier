@@ -3,6 +3,7 @@ adversarial receipt, and the harness must report that honestly."""
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -210,3 +211,47 @@ class TestEvaluateCli:
         payload = target.read_text(encoding="utf-8")
         assert '"extractor": "dummy"' in payload
         assert '"false_approvals": 0' in payload
+
+    def test_llm_without_a_key_explains_itself(self) -> None:
+        env = {key: value for key, value in os.environ.items() if key != "LLM_API_KEY"}
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/evaluate.py",
+                "--dataset",
+                str(COMMITTED_DATASET),
+                "--extractor",
+                "llm",
+                "--model",
+                "qwen3.6",
+                "--no-json",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        assert completed.returncode == 1
+        assert "LLM_API_KEY" in completed.stderr
+
+    def test_model_flag_is_rejected_for_the_cascade(self) -> None:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/evaluate.py",
+                "--dataset",
+                str(COMMITTED_DATASET),
+                "--extractor",
+                "cascade",
+                "--model",
+                "qwen3.6",
+                "--no-json",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 1
+        assert "--model only applies to --extractor llm" in completed.stderr

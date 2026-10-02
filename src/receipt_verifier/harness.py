@@ -151,6 +151,7 @@ def render_table(report: EvaluationReport) -> str:
         ("prompt tokens", str(metrics.prompt_tokens)),
         ("completion tokens", str(metrics.completion_tokens)),
         ("total tokens", str(metrics.prompt_tokens + metrics.completion_tokens)),
+        ("extractor errors", str(metrics.extractor_errors)),
     ]
     lines.append("")
     for name, value in rows:

@@ -413,3 +413,39 @@ class TestHttpTransportRateLimits:
         client = ScriptedHttpClient(RateLimitedResponse(200, body=body))
         transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client)
         assert call_transport(transport).text == "25000"
+
+    def test_bad_gateway_is_retried_with_backoff(self) -> None:
+        client = ScriptedHttpClient(
+            RateLimitedResponse(502, text="<html>502 Bad gateway</html>"),
+            RateLimitedResponse(200, body=ok_body()),
+        )
+        slept: list[float] = []
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client, sleep=slept.append)
+        assert call_transport(transport).text
+        assert client.calls == 2
+        assert slept == [1.0]
+        assert transport.transient_waits_seconds() == 1.0
+
+    def test_persistent_bad_gateway_finally_fails(self) -> None:
+        client = ScriptedHttpClient(
+            RateLimitedResponse(503, text="overloaded"),
+            RateLimitedResponse(503, text="overloaded"),
+            RateLimitedResponse(503, text="overloaded"),
+        )
+        slept: list[float] = []
+        transport = HttpLlmTransport(
+            LlmConfig(api_key="k"), client=client, max_transient_retries=2, sleep=slept.append
+        )
+        with pytest.raises(LlmTransportError, match="HTTP 503: overloaded"):
+            call_transport(transport)
+        assert client.calls == 3
+        assert slept == [1.0, 2.0]
+
+    def test_client_error_is_not_retried(self) -> None:
+        client = ScriptedHttpClient(RateLimitedResponse(400, text="bad request"))
+        slept: list[float] = []
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client, sleep=slept.append)
+        with pytest.raises(LlmTransportError):
+            call_transport(transport)
+        assert client.calls == 1
+        assert slept == []

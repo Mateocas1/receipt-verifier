@@ -35,6 +35,10 @@ DEFAULT_BASE_URL: Final = "https://api.nan.builders/v1"
 DEFAULT_TIMEOUT_SECONDS: Final = 30.0
 DEFAULT_MAX_RETRIES: Final = 1
 DEFAULT_MAX_RATE_LIMIT_RETRIES: Final = 8
+DEFAULT_MAX_TRANSIENT_RETRIES: Final = 3
+TRANSIENT_RETRY_BASE_SECONDS: Final = 1.0
+TRANSIENT_STATUS_CODES: Final[frozenset[int]] = frozenset({502, 503, 504})
+"""Gateway/provider hiccups worth retrying; a 429 is handled separately."""
 DEFAULT_RATE_LIMIT_WAIT_SECONDS: Final = 5.0
 DEFAULT_SOURCE_QUALITY: Final = 0.85
 
@@ -232,14 +236,17 @@ class HttpLlmTransport:
         client: httpx.Client | None = None,
         limiter: RequestLimiter | None = None,
         max_rate_limit_retries: int = DEFAULT_MAX_RATE_LIMIT_RETRIES,
+        max_transient_retries: int = DEFAULT_MAX_TRANSIENT_RETRIES,
         sleep: Callable[[float], None] | None = None,
     ) -> None:
         self._config = config
         self._client: httpx.Client | None = client
         self._limiter = limiter
         self._max_rate_limit_retries = max(0, max_rate_limit_retries)
+        self._max_transient_retries = max(0, max_transient_retries)
         self._sleep = sleep or time.sleep
         self._rate_limit_waits = 0.0
+        self._transient_waits = 0.0
 
     def _http(self) -> httpx.Client:
         client = self._client
@@ -252,6 +259,10 @@ class HttpLlmTransport:
         """Total time this transport spent waiting out ``429`` answers."""
         return self._rate_limit_waits
 
+    def transient_waits_seconds(self) -> float:
+        """Total time this transport spent backing off transient ``5xx`` answers."""
+        return self._transient_waits
+
     @property
     def limiter(self) -> RequestLimiter | None:
         """The pacing limiter shared by the stages built from one configuration."""
@@ -259,6 +270,7 @@ class HttpLlmTransport:
 
     def _post(self, payload: dict[str, object], timeout_seconds: float) -> object:
         attempts = 0
+        transient = 0
         while True:
             if self._limiter is not None:
                 self._limiter.acquire()
@@ -266,28 +278,39 @@ class HttpLlmTransport:
                 response = self._http().post(
                     "/chat/completions", json=payload, timeout=timeout_seconds
                 )
-                if response.status_code == 429:
-                    wait = retry_after_seconds(response.headers)
-                    if wait is None:
-                        wait = (
-                            self._limiter.seconds_until_slot()
-                            if self._limiter is not None
-                            else DEFAULT_RATE_LIMIT_WAIT_SECONDS
-                        )
-                    if attempts >= self._max_rate_limit_retries:
-                        raise LlmRateLimitError(
-                            "provider kept rate limiting after "
-                            f"{self._max_rate_limit_retries} retries "
-                            f"({self._rate_limit_waits:.1f}s waited)"
-                        )
-                    attempts += 1
-                    self._rate_limit_waits += wait
-                    self._sleep(wait)
-                    continue
+            except Exception as exc:  # transport-level failure: the cascade moves on
+                raise LlmTransportError(str(exc)) from exc
+            if response.status_code == 429:
+                wait = retry_after_seconds(response.headers)
+                if wait is None:
+                    wait = (
+                        self._limiter.seconds_until_slot()
+                        if self._limiter is not None
+                        else DEFAULT_RATE_LIMIT_WAIT_SECONDS
+                    )
+                if attempts >= self._max_rate_limit_retries:
+                    raise LlmRateLimitError(
+                        "provider kept rate limiting after "
+                        f"{self._max_rate_limit_retries} retries "
+                        f"({self._rate_limit_waits:.1f}s waited)"
+                    )
+                attempts += 1
+                self._rate_limit_waits += wait
+                self._sleep(wait)
+                continue
+            if response.status_code in TRANSIENT_STATUS_CODES:
+                if transient >= self._max_transient_retries:
+                    raise LlmTransportError(_error_message(response.status_code, response.text))
+                wait = retry_after_seconds(response.headers)
+                if wait is None:
+                    wait = TRANSIENT_RETRY_BASE_SECONDS * float(2**transient)
+                transient += 1
+                self._transient_waits += wait
+                self._sleep(wait)
+                continue
+            try:
                 response.raise_for_status()
                 return response.json()
-            except LlmRateLimitError:
-                raise
             except httpx.HTTPStatusError as exc:
                 raise LlmTransportError(_status_error_message(exc)) from exc
             except Exception as exc:  # transport-level failure: the cascade moves on
@@ -350,11 +373,14 @@ def build_http_client(config: LlmConfig) -> httpx.Client:
 _STATUS_BODY_LIMIT: Final = 400
 
 
-def _status_error_message(exc: httpx.HTTPStatusError) -> str:
+def _error_message(status: int, text: str) -> str:
     """A transport error that keeps the provider's explanation (never the key)."""
-    status = exc.response.status_code
-    body = exc.response.text.strip().replace("\n", " ")[:_STATUS_BODY_LIMIT]
-    return f"HTTP {status}: {body}" if body else f"HTTP {status}: {exc}"
+    body = text.strip().replace("\n", " ")[:_STATUS_BODY_LIMIT]
+    return f"HTTP {status}: {body}" if body else f"HTTP {status}"
+
+
+def _status_error_message(exc: httpx.HTTPStatusError) -> str:
+    return _error_message(exc.response.status_code, exc.response.text)
 
 
 def parse_payload(text: str) -> LlmReceiptPayload:
@@ -469,11 +495,14 @@ __all__ = [
     "DEFAULT_BASE_URL",
     "DEFAULT_MAX_RATE_LIMIT_RETRIES",
     "DEFAULT_MAX_RETRIES",
+    "DEFAULT_MAX_TRANSIENT_RETRIES",
     "DEFAULT_RATE_LIMIT_WAIT_SECONDS",
     "DEFAULT_TIMEOUT_SECONDS",
     "LLM_EXTRACTOR_NAME",
     "RETRY_PROMPT",
     "SYSTEM_PROMPT",
+    "TRANSIENT_RETRY_BASE_SECONDS",
+    "TRANSIENT_STATUS_CODES",
     "HttpLlmTransport",
     "LlmChoice",
     "LlmChoiceMessage",

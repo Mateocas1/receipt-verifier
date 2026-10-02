@@ -22,6 +22,7 @@ from typing import Final
 from receipt_verifier.dataset import load_dataset
 from receipt_verifier.extraction import ReceiptExtractor
 from receipt_verifier.extractors.dummy import DummyExtractor
+from receipt_verifier.extractors.resilient import ResilientExtractor
 from receipt_verifier.harness import default_report_path, render_table, run_evaluation, write_report
 from receipt_verifier.ratelimit import limiter_from_env
 from receipt_verifier.schema import AR_TZ
@@ -69,7 +70,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=0,
         help="exit non-zero when more than this many receipts are wrongly approved",
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--strict-errors",
+        action="store_true",
+        help=(
+            "abort the run on the first extractor exception; by default a failed sample "
+            "is recorded as an empty reading so a live run survives provider hiccups"
+        ),
+    )
+    args = parser.parse_args(argv)
+    args.tolerate_errors = not args.strict_errors
+    return args
 
 
 def build_extractor(args: argparse.Namespace) -> tuple[ReceiptExtractor, float]:
@@ -94,6 +105,7 @@ def build_extractor(args: argparse.Namespace) -> tuple[ReceiptExtractor, float]:
                 "install the extra (uv sync --extra ocr) and point OCR_TESSDATA at a "
                 "tessdata directory with eng/spa traineddata"
             ) from exc
+    from receipt_verifier.extractors.resilient import ResilientExtractor
     from receipt_verifier.service.settings import NoExtractorConfigured, Settings
 
     settings = Settings.from_env()
@@ -106,7 +118,10 @@ def build_extractor(args: argparse.Namespace) -> tuple[ReceiptExtractor, float]:
                 "(--model <id> or VISION_MODEL_PRIMARY); the comparison table in the "
                 "README marks this row as pending a key"
             )
-        return settings.build_vision_model(model, limiter=limiter), 0.0
+        engine = settings.build_vision_model(model, limiter=limiter)
+        if args.tolerate_errors:
+            return ResilientExtractor(engine), 0.0
+        return engine, 0.0
     try:
         return settings.build_extractor(limiter=limiter), 0.0
     except NoExtractorConfigured as exc:
@@ -121,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
 
     report = run_evaluation(dataset, extractor, now=now, noise=noise)
     print(render_table(report))
+    if isinstance(extractor, ResilientExtractor) and extractor.failures:
+        print(f"\nextractor errors: {extractor.failures} sample(s) ({extractor.last_error})")
 
     if not args.no_json:
         json_path = args.json_path or default_report_path(extractor.name, noise)

@@ -73,6 +73,8 @@ class ExtractionResult(BaseModel):
     cost_usd: Decimal = Decimal("0")
     prompt_tokens: int = Field(default=0, ge=0)
     completion_tokens: int = Field(default=0, ge=0)
+    error: str = ""
+    """Why this reading is empty, when the extractor itself failed."""
 
     def field_map(self) -> dict[str, ExtractedField[Any]]:
         """Mapping of canonical field name to its extraction, in ``FIELD_NAMES`` order."""
