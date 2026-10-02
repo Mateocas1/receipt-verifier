@@ -364,7 +364,9 @@ Undefined rates (no positive predictions, empty dataset) are reported as `n/a`, 
 
 Live comparison on `dataset/synthetic/v1` — 150 receipts, 30 of them adversarial — against the
 NaN OpenAI-compatible endpoint, one request at a time: `EVAL_RPM=20`, `LLM_MAX_TOKENS=3000`,
-`LLM_TIMEOUT_SECONDS=120`, `temperature=0`. The raw per-sample reports stay under the
+`LLM_TIMEOUT_SECONDS=120`, `temperature=0`. The dataset printed no issuer code, which is why this
+sweep's coverage and recall are capped (§3 below); `synthetic/v2` fixes exactly that and is the
+dataset to re-run once a key is available. The raw per-sample reports stay under the
 gitignored `reports/`; the committed [`results/llm-eval.json`](results/llm-eval.json) is the
 summary these tables are rendered from, and `scripts/summarize_llm_eval.py --markdown`
 re-renders them, so the table cannot drift from the runs.
@@ -445,7 +447,10 @@ and it means the cascade's token total is a mix, not a per-model number.
    `issuer` is a *critical* field, an unreadable issuer forces `manual_review`, which is why
    coverage and approve recall sit near 0.4-0.6 even at ~0.99 accuracy on readable fields. This
    is an artifact of the dataset, not of the models — and the reason the cascade reaches 1.000
-   recall: the OCR parser knows these six layouts by construction.
+   recall: the OCR parser knows these six layouts by construction. **`synthetic/v2` fixes the
+   artifact** by printing the published issuer name (`ISSUER_DISPLAY_NAMES`, published in the
+   prompt as well: see the dataset section); this sweep ran on `v1` and a provider key is needed
+   to re-measure.
 2. **Both false-approval classes found here are the replay corner.** All three false approvals
    (`glm5.3-flash` ×1, `gemma4` ×2) are `duplicate_operation_id` receipts whose twin went to
    `manual_review`: with approval-only recording, an operation id only entered the registry once
@@ -462,21 +467,30 @@ and it means the cascade's token total is a mix, not a per-model number.
    therefore conditioned on those two settings, and both are printed with the run.
 
 The `ocr` row is a real run — `OCR_TESSDATA=... uv run python scripts/evaluate.py --dataset
-dataset/synthetic/v1 --extractor ocr --max-false-approvals 0`. The dummy row is a plumbing
+dataset/synthetic/v2 --extractor ocr --max-false-approvals 0`. The dummy row is a plumbing
 check: it proves the harness, labels and validator are consistent, and says nothing about models.
+Both are unchanged on `synthetic/v2`: the offsetting and the OCR parser already read the issuer,
+so the published-name change moves the *vision-model* rows, which need a provider key to
+re-measure.
 
-Injecting extractor noise shows the harness can actually fail (dummy extractor):
+Injecting extractor noise shows the harness can actually fail (dummy extractor, `synthetic/v2`):
 
 | `--noise` | approve precision | approve recall | false approvals | coverage |
 | --- | --- | --- | --- | --- |
 | 0.00 | 1.000 | 1.000 | 0 | 1.000 |
-| 0.05 | 0.977 | 0.700 | 2 (2/30 adversarial) | 0.700 |
-| 0.15 | 0.955 | 0.350 | 2 (2/30 adversarial) | 0.353 |
+| 0.05 | 0.988 | 0.700 | 1 (1/30 adversarial) | 0.700 |
+| 0.15 | 1.000 | 0.350 | 0 | 0.353 |
 | 0.30 | 1.000 | 0.058 | 0 | 0.060 |
 
-Both false approvals at `--noise 0.05` have the same cause: the *earlier* legitimate receipt
-sharing that `operation_id` was itself rejected, so its id never entered the registry and the
-replay looked fresh. Injecting noise is exactly how you find that class of bug.
+Injecting noise is how that bug class was found, and it is also how the replay fix was
+measured. Recording every seen operation id took the sweep from **2 to 1** false approvals at
+`--noise 0.05` and from **2 to 0** at `--noise 0.15` (same seed, same dataset, before and after
+`fix/replay-and-issuer`).
+
+The one that remains has a different cause and is worth keeping visible: in that sample the
+*first* receipt's `operation_id` was corrupted by the injected noise, so the harness never saw
+the id and had nothing to record — the replay of a number we failed to read cannot be caught by
+any registry. That is a field-accuracy limit, not a recording-rule one.
 
 `scripts/evaluate.py` exits non-zero when the false-approval count exceeds
 `--max-false-approvals` (default `0`), which is what CI runs for `dummy` and `ocr`.
@@ -550,8 +564,11 @@ unit tests with a fake transport, including the "provider down ⇒ fall back to 
 
 ## Next
 
-1. Add real anonymized receipts and report synthetic-vs-real deltas next to each other — the
-   synthetic `issuer` artifact disappears the moment a real brand name is on the image.
+1. Re-run the vision-model sweep on `synthetic/v2`, where the issuer is readable, and see how
+   much of the 0.4-0.6 recall cap was the dataset artifact; then add real anonymized receipts and
+   report synthetic-vs-real deltas next to each other. This needs a provider key: the harness,
+   the prompt and the reader already carry the published mapping, so only the provider calls are
+   outstanding.
 2. Configure prices and re-run the comparison so the token columns become dollars; then decide
    whether the answer cap can drop below `3000` without losing JSON answers.
 3. Add a per-issuer and per-adversarial-kind breakdown to `Metrics` (the data is already in
