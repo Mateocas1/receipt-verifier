@@ -9,6 +9,7 @@ from email.utils import format_datetime
 from receipt_verifier.ratelimit import (
     DEFAULT_RPM,
     RequestLimiter,
+    limiter_from_env,
     parse_rpm,
     retry_after_seconds,
 )
@@ -49,6 +50,11 @@ class TestParseRpm:
     def test_accepts_positive_integers(self) -> None:
         assert parse_rpm("25") == 25
         assert parse_rpm(" 7 ") == 7
+
+    def test_limiter_from_env_uses_eval_rpm(self) -> None:
+        assert limiter_from_env({}).rpm == DEFAULT_RPM
+        assert limiter_from_env({"EVAL_RPM": "5"}).rpm == 5
+        assert limiter_from_env({"EVAL_RPM": "nonsense"}).rpm == DEFAULT_RPM
 
 
 class TestRequestLimiter:

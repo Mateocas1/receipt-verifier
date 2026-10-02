@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from receipt_verifier.circuit import CircuitBreaker, GuardedExtractor
 from receipt_verifier.extractors.cascade import CascadeExtractor
 from receipt_verifier.extractors.llm import LlmTransportError
+from receipt_verifier.ratelimit import RequestLimiter
 from receipt_verifier.schema import VerdictReason
 from receipt_verifier.service import Settings, create_app
 from receipt_verifier.service.settings import NoExtractorConfigured, parse_allowed_destinations
@@ -323,6 +324,26 @@ class TestSettings:
     def test_no_stage_configured_is_reported(self) -> None:
         with pytest.raises(NoExtractorConfigured):
             Settings.from_env({"RECEIPT_VERIFIER_ENABLE_OCR": "false"}).build_extractor()
+
+    def test_build_vision_model_names_the_extractor_after_the_model(self) -> None:
+        settings = Settings.from_env({"LLM_API_KEY": "k", "VISION_MODEL_PRIMARY": "vision-1"})
+        engine = settings.build_vision_model("qwen3.6")
+        assert engine.name == "llm-qwen3.6"
+        assert engine.model == "qwen3.6"
+
+    def test_build_extractor_shares_one_limiter_across_the_llm_stages(self) -> None:
+        settings = Settings.from_env(
+            {
+                "LLM_API_KEY": "k",
+                "VISION_MODEL_PRIMARY": "vision-1",
+                "VISION_MODEL_SECONDARY": "vision-2",
+                "RECEIPT_VERIFIER_ENABLE_OCR": "false",
+            }
+        )
+        limiter = RequestLimiter(rpm=3)
+        cascade = settings.build_extractor(limiter=limiter)
+        transports = [stage.inner.transport for stage in cascade.stages]
+        assert [transport.limiter for transport in transports] == [limiter, limiter]
 
     def test_destination_parsing_handles_bare_values(self) -> None:
         keys = parse_allowed_destinations(

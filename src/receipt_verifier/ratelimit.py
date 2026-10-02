@@ -14,6 +14,7 @@ Both are pure of any network concern and inject clock/sleep, so tests never wait
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -40,6 +41,12 @@ def parse_rpm(raw: str | None, default: int = DEFAULT_RPM) -> int:
     except (AttributeError, ValueError):
         return default
     return value if value > 0 else default
+
+
+def limiter_from_env(env: Mapping[str, str] | None = None) -> RequestLimiter:
+    """A limiter paced by ``EVAL_RPM`` (environment when ``env`` is omitted)."""
+    source = env if env is not None else os.environ
+    return RequestLimiter(rpm=parse_rpm(source.get("EVAL_RPM")))
 
 
 class RequestLimiter:
@@ -155,6 +162,7 @@ __all__ = [
     "DEFAULT_RPM",
     "DEFAULT_WINDOW_SECONDS",
     "RequestLimiter",
+    "limiter_from_env",
     "parse_rpm",
     "retry_after_seconds",
 ]
