@@ -36,6 +36,7 @@ from receipt_verifier.extractors.ocr import (
     TesserocrEngine,
     discover_tessdata,
 )
+from receipt_verifier.extractors.retry import DestinationRetryExtractor
 from receipt_verifier.ratelimit import RequestLimiter
 from receipt_verifier.validate import ValidationPolicy
 
@@ -86,6 +87,8 @@ class Settings:
     ocr_tessdata: Path | None = None
     enable_llm: bool = True
     enable_ocr: bool = True
+    destination_retry: bool = True
+    """Give a vision stage one focused destination re-ask when the allowlist rejects it."""
 
     @property
     def token_configured(self) -> bool:
@@ -145,6 +148,7 @@ class Settings:
             ocr_tessdata=Path(tessdata) if tessdata else None,
             enable_llm=flag("RECEIPT_VERIFIER_ENABLE_LLM", True),
             enable_ocr=flag("RECEIPT_VERIFIER_ENABLE_OCR", True),
+            destination_retry=flag("RECEIPT_VERIFIER_DESTINATION_RETRY", True),
         )
 
     def build_extractor(self, *, limiter: RequestLimiter | None = None) -> ReceiptExtractor:
@@ -159,24 +163,28 @@ class Settings:
             if self.llm.primary_model:
                 stages.append(
                     self._guard(
-                        VisionLlmExtractor(
-                            model=self.llm.primary_model,
-                            transport=HttpLlmTransport(self.llm, limiter=limiter),
-                            timeout_seconds=self.llm.timeout_seconds,
-                            prices=self.llm.prices,
-                            name="llm-primary",
+                        self._refinable(
+                            VisionLlmExtractor(
+                                model=self.llm.primary_model,
+                                transport=HttpLlmTransport(self.llm, limiter=limiter),
+                                timeout_seconds=self.llm.timeout_seconds,
+                                prices=self.llm.prices,
+                                name="llm-primary",
+                            )
                         )
                     )
                 )
             if self.llm.secondary_model:
                 stages.append(
                     self._guard(
-                        VisionLlmExtractor(
-                            model=self.llm.secondary_model,
-                            transport=HttpLlmTransport(self.llm, limiter=limiter),
-                            timeout_seconds=self.llm.timeout_seconds,
-                            prices=self.llm.prices,
-                            name="llm-secondary",
+                        self._refinable(
+                            VisionLlmExtractor(
+                                model=self.llm.secondary_model,
+                                transport=HttpLlmTransport(self.llm, limiter=limiter),
+                                timeout_seconds=self.llm.timeout_seconds,
+                                prices=self.llm.prices,
+                                name="llm-secondary",
+                            )
                         )
                     )
                 )
@@ -208,6 +216,20 @@ class Settings:
             timeout_seconds=self.llm.timeout_seconds,
             prices=self.llm.prices,
             name=name or f"{LLM_EXTRACTOR_NAME}-{model}",
+        )
+
+    def _refinable(self, extractor: VisionLlmExtractor) -> ReceiptExtractor:
+        """Add the one-retry destination re-ask to a vision stage when it is enabled.
+
+        The wrapper sits inside the guard, so the stage deadline covers both the first
+        reading and the focused re-ask; with no configured allowlist it disables itself.
+        """
+        if not self.destination_retry:
+            return extractor
+        return DestinationRetryExtractor(
+            inner=extractor,
+            allowed_destinations=self.allowed_destinations,
+            refiner=extractor,
         )
 
     def _build_ocr(self) -> OcrExtractor:

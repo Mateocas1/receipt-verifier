@@ -84,6 +84,7 @@ def create_app(
             "version": SERVICE_VERSION,
             "token_configured": resolved.token_configured,
             "allowed_destinations": len(resolved.allowed_destinations),
+            "destination_retry": resolved.destination_retry,
             "extractors": [
                 {"name": item.name, "state": item.state.value, "failures": item.failures}
                 for item in statuses
