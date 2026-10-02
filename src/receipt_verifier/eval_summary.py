@@ -165,6 +165,7 @@ def summarize_report(report: Mapping[str, Any]) -> dict[str, Any]:
     row: dict[str, Any] = {
         "extractor": report.get("extractor"),
         "dataset": f"{report.get('dataset_name')} {report.get('dataset_version')}",
+        "destination_retry": bool(report.get("destination_retry", False)),
         "field_accuracy": field_accuracy(metrics),
         "field_accuracy_readable": readable_field_accuracy(metrics),
         "per_field": per_field_accuracy(metrics),
@@ -197,7 +198,11 @@ def _ms_cell(value: Any) -> str:
 
 
 def render_markdown(runs: Sequence[Mapping[str, Any]]) -> str:
-    """The README comparison table, rendered from the summary rows."""
+    """The README comparison table, rendered from the summary rows.
+
+    A run measured with the focused destination retry is marked in the dataset cell, so the
+    retry row and the plain row of the same model and dataset stay distinguishable.
+    """
     header = (
         "| Extractor | Dataset | Field accuracy | approve precision | approve recall | "
         "False approvals (adversarial) | Manual review | Latency p50 / p95 | Tokens/receipt |"
@@ -208,11 +213,14 @@ def render_markdown(runs: Sequence[Mapping[str, Any]]) -> str:
         tokens = run.get("total_tokens") or 0
         n = run.get("n") or 0
         per_receipt = f"{tokens / n:.0f}" if n else "n/a"
+        dataset = str(run.get("dataset", "?"))
+        if run.get("destination_retry"):
+            dataset = f"{dataset} + retry"
         lines.append(
             "| `{extractor}` | {dataset} | {field} | {precision} | {recall} | {false_approvals} "
             "({adv}/{adv_n}) | {manual} | {p50} / {p95} | {tokens} |".format(
                 extractor=run.get("extractor", "?"),
-                dataset=run.get("dataset", "?"),
+                dataset=dataset,
                 field=_rate_cell(run.get("field_accuracy_readable") or run.get("field_accuracy")),
                 precision=_rate_cell(run.get("approve_precision")),
                 recall=_rate_cell(run.get("approve_recall")),

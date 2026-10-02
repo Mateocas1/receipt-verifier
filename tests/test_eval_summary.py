@@ -120,6 +120,18 @@ class TestAggregation:
         row = summarize_report(report)
         assert row["retry_latency_mean_ms"] == 0.0
 
+    def test_the_dataset_cell_marks_a_retry_run(self) -> None:
+        plain = summarize_report(make_report())
+        retried = summarize_report(make_report())
+        retried["destination_retry"] = True
+        table = render_markdown([plain, retried])
+        assert "| synthetic v1 |" in table
+        assert "| synthetic v1 + retry |" in table
+
+    def test_a_report_without_the_flag_summarizes_as_plain(self) -> None:
+        row = summarize_report(make_report())
+        assert row["destination_retry"] is False
+
     def test_injection_detail_comes_from_the_sample_rows(self) -> None:
         row = summarize_report(make_report())
         injected = row["injected_instructions"]

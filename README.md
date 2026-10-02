@@ -39,6 +39,11 @@ LLM_MAX_TOKENS=3000 LLM_TIMEOUT_SECONDS=120 \
   --model deepseek-v4-flash --json reports/eval-llm-deepseek-v4-flash.json
 VISION_MODEL_PRIMARY=deepseek-v4-flash VISION_MODEL_SECONDARY=qwen3.8-flash \
   uv run python scripts/evaluate.py --dataset dataset/synthetic/v2 --extractor cascade
+# the same model with one focused destination re-ask per receipt (see Results)
+LLM_MAX_TOKENS=3000 LLM_TIMEOUT_SECONDS=120 \
+  uv run python scripts/evaluate.py --dataset dataset/synthetic/v2 --extractor llm \
+  --model deepseek-v4-flash --destination-retry \
+  --json reports/eval-llm-deepseek-v4-flash-retry.v2.json
 uv run python scripts/summarize_llm_eval.py --report reports/eval-cascade.json --markdown
 
 # 3. service
@@ -82,6 +87,7 @@ src/receipt_verifier/
 │   ├── ocr.py            Tesseract text engine + per-issuer layout parsers
 │   ├── llm.py            OpenAI-compatible vision model, JSON-only, retry on bad JSON
 │   ├── resilient.py      evaluation-only: a failed sample becomes an empty reading
+│   ├── retry.py          one focused destination re-ask when the allowlist rejects it
 │   └── cascade.py        ordered stages with fallback and usability rules
 ├── ratelimit.py          rolling-window pacing + 429 wait parsing for shared provider keys
 ├── vision_probe.py       which provider models actually accept an image
@@ -94,7 +100,7 @@ dataset/synthetic/v2/      current dataset: same labels, published issuer names
 dataset/real/anonymized/   frozen slot for real anonymized receipts (empty)
 results/llm-eval.json      committed summary of the live provider runs
 reports/                   raw per-sample reports (gitignored)
-tests/                     452 tests (12 more with the OCR extra + language data)
+tests/                     507 tests (12 more with the OCR extra + language data)
 ```
 
 ## Datasets `synthetic/v1` (frozen) and `synthetic/v2` (current)
@@ -259,6 +265,7 @@ curl -s -X POST localhost:8000/v1/receipts \
 | `EXTRACTOR_TIMEOUT_SECONDS` | `20` | per-stage deadline (thread-based) |
 | `BREAKER_FAILURE_THRESHOLD` / `BREAKER_OPEN_SECONDS` | `3` / `30` | circuit breaker per stage |
 | `RECEIPT_VERIFIER_ENABLE_LLM` / `_ENABLE_OCR` | `true` | drop a stage without removing credentials |
+| `RECEIPT_VERIFIER_DESTINATION_RETRY` | `true` | give each vision stage one focused destination re-ask (see [Destination check and retry](#destination-check-and-retry)); needs a configured allowlist and is inert without one |
 
 ### Docker
 
@@ -302,6 +309,10 @@ service too.
 - **Best partial**: if no stage is usable, the most complete partial reading is returned so
   a human sees what *was* readable; the validator still refuses to approve it.
 - **`extractor_used`** is the stage that produced the returned fields, per receipt.
+- **Destination re-ask**: each vision stage sits inside `DestinationRetryExtractor`, which
+  re-asks that same stage once (focused prompt, same model, same scoring) when the destination
+  is unusable or outside the configured allowlist, and replaces only that field when the answer
+  is allowlisted. See [Destination check and retry](#destination-check-and-retry).
 - **Confidence is code-owned** (`confidence.py`): `source_quality × format_factor ×
   corroboration_factor`. Money and timestamps are corroborated as *parsed values* against
   the receipt text, so a hallucinated amount cannot ride along on a digit substring.
@@ -324,7 +335,10 @@ inferred**:
 
 An unreadable field is a *missing* field, never a mismatch: `amount_matches_expectation` and
 `destination_allowed` only fire when the value is actually present, so a blurry photo routes
-to a human instead of looking like fraud.
+to a human instead of looking like fraud. A CBU/CVU that fails its BCRA check digits, or an
+alias outside the printed-alias syntax, is dropped while the field is scored
+(`is_valid_destination`, shared with the schema), so it arrives as missing rather than as a
+wrong destination — and that is exactly the case the focused re-ask exists for.
 
 | Check | Policy input |
 | --- | --- |
@@ -366,7 +380,8 @@ Every LLM row below is a real provider run on 150 receipts (30 adversarial), one
 time: `EVAL_RPM=20`, `LLM_MAX_TOKENS=3000`, `LLM_TIMEOUT_SECONDS=120`, `temperature=0`; the
 `dummy` and `ocr` rows are local runs of the same set. The `synthetic/v1` block is the first
 sweep and is kept for comparison; the `synthetic/v2` block is the follow-up on the dataset that
-prints the published issuer name (see the dataset section).
+prints the published issuer name (see the dataset section). The last row is the same model and
+dataset re-measured with `--destination-retry`, marked `+ retry` in the Dataset column.
 The raw per-sample reports stay under the gitignored `reports/`; the committed
 [`results/llm-eval.json`](results/llm-eval.json) is the summary these tables are rendered from,
 and `scripts/summarize_llm_eval.py --markdown` re-renders them, so the table cannot drift from
@@ -388,6 +403,7 @@ the runs.
 | `llm-deepseek-v4-flash` | synthetic v2 | 0.997 | 1.000 | 0.983 | **0** (0/30) | 0.040 | 4 134 ms / 6 193 ms | 1 045 |
 | `llm-qwen3.8-flash` | synthetic v2 | 0.983 | 1.000 | 0.967 | **0** (0/30) | 0.073 | 7 351 ms / 16 060 ms | 1 477 |
 | `cascade` (deepseek → qwen3.8 → OCR) | synthetic v2 | 0.995 | 1.000 | 0.975 | **0** (0/30) | 0.040 | 3 352 ms / 4 838 ms | 1 043 |
+| `llm-deepseek-v4-flash` | synthetic v2 + retry | 0.999 | 1.000 | **0.992** | **0** (0/30) | 0.040 | 3 347 ms / 6 089 ms | 1 115 |
 
 ### What v2 changed
 
@@ -427,6 +443,7 @@ excluded from that mean and still reported per field in the summary.
 | `deepseek-v4-flash` | v2 | 1.00 | 0.99 | 1.00 | 1.00 | 1.00 | 0.99 | 0.99 | **1.00** | 1.00 |
 | `qwen3.8-flash` | v2 | 0.99 | 0.99 | 0.99 | 0.99 | 0.99 | 0.96 | 0.99 | **0.99** | 0.99 |
 | `cascade` | v2 | 1.00 | 1.00 | 1.00 | 0.99 | 1.00 | 0.97 | 1.00 | **1.00** | 0.99 |
+| `llm-deepseek-v4-flash` (+ retry) | v2 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | **0.99** | 1.00 | **1.00** | 1.00 |
 | `ocr` | both | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
 
 False approvals by adversarial class (each class is 6 receipts; every v2 row is `0 0 0 0 0`, so
@@ -444,6 +461,7 @@ only the v1 exceptions are listed, followed by the v2 rows):
 | `deepseek-v4-flash` | v2 | 0 | 0 | 0 | **0** | 0 |
 | `qwen3.8-flash` | v2 | 0 | 0 | 0 | **0** | 0 |
 | `cascade` | v2 | 0 | 0 | 0 | **0** | 0 |
+| `llm-deepseek-v4-flash` (+ retry) | v2 | 0 | 0 | 0 | **0** | 0 |
 
 No live model ever approved an injected-instruction receipt: **0/6 on every row of both datasets**,
 each rejection carrying the `prompt_injection` reason. Two adversarial receipts were routed to a
@@ -457,6 +475,44 @@ On v2 the only non-approvals among the 120 approvable receipts are model misread
 direction: `deepseek-v4-flash` 2 (`destination_mismatch`), `qwen3.8-flash` 4 (3
 `destination_mismatch`, 1 `missing_field` from its one extractor error) and the cascade 3
 (`destination_mismatch`). Nothing was approved that should not have been.
+
+### Destination check and retry
+
+A destination is the one field the code can check without a model: a CBU/CVU must carry its BCRA
+check digits, an alias must match the printed-alias syntax. `identifiers.is_valid_destination`
+is that rule for both the schema and the retry, and `confidence.score_field` drops a value that
+fails it, so an *invalid* destination is a misread (`missing_field` → review), never a
+`destination_mismatch`. When the destination is unusable, or is usable but outside the
+configured allowlist, `extractors.retry.DestinationRetryExtractor` re-asks the **same** extractor
+once with a focused prompt for that one field and accepts the answer only if it passes the same
+allowlist rule. Only the `destination` field can be replaced, so a receipt rejected for amount,
+date, replay or injection keeps its verdict; with no configured allowlist the retry is disabled.
+
+Measured with one live sweep of the same model and dataset (`deepseek-v4-flash`, `synthetic/v2`,
+`EVAL_RPM=20`, `LLM_MAX_TOKENS=3000`, `LLM_TIMEOUT_SECONDS=120`):
+
+| v2, deepseek-v4-flash | destination exact | approve recall | false approvals | coverage | tokens/receipt | p50 |
+| --- | --- | --- | --- | --- | --- | --- |
+| without retry | 148/150 (0.987) | 118/120 (0.983) | 0 (0/30) | 1.000 | 1 045 | 4 134 ms |
+| **with retry** | **149/150 (0.993)** | **119/120 (0.992)** | 0 (0/30) | 1.000 | 1 115 | 3 347 ms |
+
+Retries used: **8 of 150** receipts, all of them aliases whose first read was outside the
+allowlist; one of them (`galicia-normal-0018`, a known `destination_mismatch` in the previous
+sweep) came back as an approval. Added latency: **3 757 ms mean per retried receipt, 30.1 s over
+the run** (the overall p50 moved *down*, 4 134 → 3 347 ms, because the retried receipts are only
+8 of 150 and the provider was faster on this sweep — the retry never makes a receipt cheaper).
+Cost: +10 382 tokens (+6.6%), 1 045 → 1 115 per receipt.
+
+The honest caveat is that the provider is not bit-stable: this sweep and the previous one differ
+on 5 of 150 samples, and 4 of those differences are destinations. The retry's attributable effect
+is the recovery above; `bna-normal-0004`, the other known non-approval, was read correctly on its
+first try this time, and `uala-normal-0007` moved the other way. That last one is also the reason
+the retry's boundary matters: a focused re-ask can in principle turn a review into a reject when
+the first read was unusable and the re-read lands on a *different* allowlisted value. Here the
+receipt kept its `destination_mismatch` with a present, non-allowlisted destination, which is a
+first-read misread the re-ask did not correct — the same verdict it would have had without the
+retry, since a syntactically valid wrong alias is a mismatch and not a missing field. It is
+documented in the limits instead of being papered over.
 
 ### Chosen defaults
 
@@ -589,15 +645,27 @@ unit tests with a fake transport, including the "provider down ⇒ fall back to 
   empty.
 - **The live numbers are single sweeps.** Each LLM row comes from one 150-receipt run per model on
   `2026-10-02`, at `temperature=0`, `LLM_MAX_TOKENS=3000` and `LLM_TIMEOUT_SECONDS=120`: a v1
-  sweep (all six models) and a v2 sweep (the two chosen models plus the cascade). The provider is
-  not bit-stable and caches identical requests, so a second sweep would move these numbers; treat
-  the ranking and the v1→v2 deltas, not the third decimal.
+  sweep (all six models), a v2 sweep (the two chosen models plus the cascade) and a second
+  `deepseek-v4-flash` v2 run with `--destination-retry`. The provider is not bit-stable and caches
+  identical requests, so a second sweep moves these numbers — the retry run and the plain v2 run
+  of the same model disagree on 5 of 150 samples — treat the ranking and the v1→v2 deltas, not
+  the third decimal.
 - **`synthetic/v1` does not print the issuer, `synthetic/v2` does.** The v1 numbers are kept for
   comparison and are the reason v1 coverage/recall sit at 0.44-0.57; `issuer` is excluded from the
   headline accuracy on both datasets and still reported per field. `mimo-v2.6-flash`, `glm5.3-flash`,
   `qwen3.6` and `gemma4` were only measured on v1, where their recall is capped by the same
   artifact, so their v1 ranking against the two v2-measured models is not like-for-like.
 - **NaN publishes no prices**, so cost is reported as 0 and the token columns are the cost proxy.
+- **The destination retry is one bounded call, and its one bad direction is a review→reject.**
+  At most one focused re-ask per receipt, it can only replace the `destination` field, a failed
+  re-ask keeps the first reading, and it needs a non-empty configured allowlist (without one it
+  is inert, because there is nothing to compare against). It can never rescue a receipt rejected
+  for amount, date, replay or injection. It *can* turn a `manual_review` into a reject when the
+  first read is unusable and the focused read lands on a different allowlisted value that is not
+  the ledger's; the verdict is then a wrong destination, not an approval, but a legitimate
+  receipt pays for it as a false reject. Closing that edge properly means moving the adoption
+  decision next to the ledger expectation (see [Next](#next)), the one place the code knows which
+  destination the payment actually had. Measured cost: 8 retries on 150 receipts, +6.6% tokens.
 - **A model that drops the memo would defeat the injection denylist.** All six models rejected
   all six injected receipts (0/6 approved, `prompt_injection` each time), and the payload schema
   still cannot express a decision — but detection needs the injected text to reach the validator
@@ -628,7 +696,11 @@ unit tests with a fake transport, including the "provider down ⇒ fall back to 
    whether the answer cap can drop below `3000` without losing JSON answers.
 3. Add a per-issuer and per-adversarial-kind breakdown to `Metrics` (the data is already in
    `SampleOutcome`), plus a confusion matrix per rejection reason.
-4. Per-caller quotas, request ids and structured audit logging for the service.
+4. Move the destination-retry adoption decision next to the ledger expectation, so a focused
+   re-read can only ever *recover* an approval and a review can never become a reject. That needs
+   the retry candidate to travel in the reading and the validator (which holds the expectation)
+   to choose between the two.
+5. Per-caller quotas, request ids and structured audit logging for the service.
 
 ## License
 
