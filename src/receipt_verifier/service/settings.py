@@ -41,6 +41,8 @@ from receipt_verifier.validate import ValidationPolicy
 
 DEFAULT_MAX_IMAGE_BYTES = 8 * 1024 * 1024
 DEFAULT_EXTRACTOR_TIMEOUT_SECONDS = 20.0
+DEFAULT_LLM_MAX_TOKENS = 900
+"""Conservative per-answer cap for the service; evaluations raise it via LLM_MAX_TOKENS."""
 
 
 class NoExtractorConfigured(RuntimeError):
@@ -120,6 +122,7 @@ class Settings:
             primary_model=text("VISION_MODEL_PRIMARY"),
             secondary_model=text("VISION_MODEL_SECONDARY"),
             timeout_seconds=number("LLM_TIMEOUT_SECONDS", 30.0),
+            max_tokens=count("LLM_MAX_TOKENS", DEFAULT_LLM_MAX_TOKENS),
             prices=LlmPrices(
                 input_per_1k=_decimal(source.get("LLM_INPUT_PRICE_PER_1K", "")),
                 output_per_1k=_decimal(source.get("LLM_OUTPUT_PRICE_PER_1K", "")),
@@ -239,6 +242,7 @@ def _decimal(raw: str) -> Decimal:
 
 __all__ = [
     "DEFAULT_EXTRACTOR_TIMEOUT_SECONDS",
+    "DEFAULT_LLM_MAX_TOKENS",
     "DEFAULT_MAX_IMAGE_BYTES",
     "NoExtractorConfigured",
     "Settings",

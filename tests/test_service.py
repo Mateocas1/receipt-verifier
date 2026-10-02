@@ -16,7 +16,11 @@ from receipt_verifier.extractors.llm import LlmTransportError
 from receipt_verifier.ratelimit import RequestLimiter
 from receipt_verifier.schema import VerdictReason
 from receipt_verifier.service import Settings, create_app
-from receipt_verifier.service.settings import NoExtractorConfigured, parse_allowed_destinations
+from receipt_verifier.service.settings import (
+    DEFAULT_LLM_MAX_TOKENS,
+    NoExtractorConfigured,
+    parse_allowed_destinations,
+)
 from receipt_verifier.validate import ValidationPolicy
 from tests.helpers import StubExtractor, reading
 
@@ -290,6 +294,7 @@ class TestSettings:
             "VISION_MODEL_PRIMARY": "vision-1",
             "VISION_MODEL_SECONDARY": "vision-2",
             "LLM_INPUT_PRICE_PER_1K": "0.5",
+            "LLM_MAX_TOKENS": "2048",
             "OCR_LANGUAGES": "spa",
             "EXTRACTOR_TIMEOUT_SECONDS": "5",
             "BREAKER_FAILURE_THRESHOLD": "2",
@@ -302,6 +307,7 @@ class TestSettings:
         assert settings.llm.api_key == "key"
         assert settings.llm.primary_model == "vision-1"
         assert settings.llm.prices.input_per_1k == Decimal("0.5")
+        assert settings.llm.max_tokens == 2048
         assert settings.ocr_languages == "spa"
         assert settings.extractor_timeout_seconds == 5.0
         assert settings.breaker_failure_threshold == 2
@@ -316,6 +322,7 @@ class TestSettings:
         assert not settings.token_configured
         assert settings.max_image_bytes == 8 * 1024 * 1024
         assert not settings.llm.configured
+        assert settings.llm.max_tokens == DEFAULT_LLM_MAX_TOKENS
 
     def test_env_never_prints_the_api_key(self) -> None:
         settings = Settings.from_env({"LLM_API_KEY": "secret-key"})

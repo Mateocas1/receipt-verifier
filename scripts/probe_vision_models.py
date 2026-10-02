@@ -122,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "probed_at": datetime.now(tz=UTC).isoformat(),
         "base_url": settings.llm.base_url,
+        "max_tokens": settings.llm.max_tokens,
         "rpm": parse_rpm(os.environ.get("EVAL_RPM")),
         "probe_image_sha256": hashlib.sha256(image).hexdigest(),
         "listed_models": list(listed),

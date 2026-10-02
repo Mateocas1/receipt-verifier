@@ -66,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
         "provider": {
             "base_url": (probe or {}).get("base_url", ""),
             "rpm": (probe or {}).get("rpm", 0),
+            "max_tokens": (probe or {}).get("max_tokens", 0),
         },
         "vision_probe": probe,
         "runs": rows,
