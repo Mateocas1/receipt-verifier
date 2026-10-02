@@ -456,7 +456,14 @@ and it means the cascade's token total is a mix, not a per-model number.
    `manual_review`: with approval-only recording, an operation id only entered the registry once
    its receipt was approved, so the replay looked fresh. **Fixed on `fix/replay-and-issuer`** —
    every seen operation id is recorded with its image hash, and the harness-level test
-   `tests/test_replay.py::TestReviewedThenReplayed` reproduces the corner and pins the fix.
+   `tests/test_replay.py::TestReviewedThenReplayed` reproduces the corner and pins the fix. Two of
+   the three are closed by that rule (`glm5.3-flash`'s `uala-duplicate_operation_id-01` and
+   `gemma4`'s `santander-duplicate_operation_id-04`, whose reviewed twins *did* carry a readable
+   operation id). The third (`gemma4`'s `mp-duplicate_operation_id-00`) has a twin whose
+   operation id was never extracted, so there was nothing to record: that residual is a
+   field-accuracy limit, is characterised by
+   `tests/test_replay.py::TestReviewedThenReplayed::test_an_unreadable_original_operation_id_is_the_remaining_limit`,
+   and is also visible as the single `--noise 0.05` false approval below.
 3. **The instrument had to be fixed twice before the models were measured.** Sweep 1 used
    `LLM_MAX_TOKENS=900` and reported qwen3.6 as failing 81/150 receipts with "model answer
    contained no JSON object" — a thinking model spends the whole answer budget on reasoning and

@@ -22,7 +22,8 @@ from receipt_verifier.replay import receipt_hash
 from receipt_verifier.schema import AdversarialKind, Decision
 from receipt_verifier.validate import ReceiptValidator, ValidationPolicy
 
-COMMITTED_DATASET = Path(__file__).resolve().parents[1] / "dataset" / "synthetic" / "v1"
+SYNTHETIC_ROOT = Path(__file__).resolve().parents[1] / "dataset" / "synthetic"
+COMMITTED_DATASETS = (SYNTHETIC_ROOT / "v1", SYNTHETIC_ROOT / "v2")
 
 tesserocr = pytest.importorskip("tesserocr", reason="install the 'ocr' extra to run OCR tests")
 pytestmark = pytest.mark.ocr
@@ -39,9 +40,9 @@ def engine() -> TesserocrEngine:
     return TesserocrEngine()
 
 
-@pytest.fixture(scope="module")
-def dataset() -> object:
-    return load_dataset(COMMITTED_DATASET)
+@pytest.fixture(scope="module", params=COMMITTED_DATASETS, ids=["v1", "v2"])
+def dataset(request: pytest.FixtureRequest) -> object:
+    return load_dataset(request.param)
 
 
 class TestEngineWiring:

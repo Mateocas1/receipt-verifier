@@ -236,3 +236,23 @@ class TestReviewedThenReplayed:
         assert approved.predicted_decision is Decision.APPROVE
         assert replayed.predicted_decision is Decision.MANUAL_REVIEW
         assert report.metrics.approve_true_positives == 1
+
+    def test_an_unreadable_original_operation_id_is_the_remaining_limit(
+        self, tmp_path: Path
+    ) -> None:
+        """Characterisation of the residual, so nobody reads the fix as complete.
+
+        One of the three live false approvals (`gemma4`, `mp-duplicate_operation_id-00`) had a
+        twin whose operation id was never extracted: an id the pipeline never saw cannot be
+        recorded, so the replay is indistinguishable from a fresh receipt. That is a
+        field-accuracy limit, not a registry rule.
+        """
+        dataset = two_sample_dataset(tmp_path)
+        first, second = dataset.labels
+        unreadable = extraction_from(first, operation_id=None)
+        report = run_evaluation(dataset, ScriptedExtractor((unreadable, extraction_from(second))))
+        original, replayed = report.outcomes
+        assert original.predicted_decision is Decision.MANUAL_REVIEW
+        assert replayed.predicted_decision is Decision.APPROVE
+        # The residual is measurable, not hidden: one duplicate still gets approved here.
+        assert report.metrics.false_approvals == 1
