@@ -23,12 +23,13 @@ from receipt_verifier.schema import (
     LedgerEntry,
     ReceiptLabel,
     VerdictReason,
+    display_names_for_version,
 )
 from receipt_verifier.synthetic.fake_data import FakeDataFactory
 from receipt_verifier.synthetic.render import render_receipt
 
 DEFAULT_SEED = 20250701
-DEFAULT_VERSION = "v1"
+DEFAULT_VERSION = "v2"
 DEFAULT_GENERATED_AT = datetime(2025, 7, 1, 9, 0, tzinfo=AR_TZ)
 """Fixed by default so the committed dataset is reproducible without extra flags."""
 
@@ -206,7 +207,8 @@ def build_dataset(
             adversarial_labels.append(label)
 
     labels.extend(adversarial_labels)
-    images = {label.image: render_receipt(label) for label in labels}
+    names = display_names_for_version(version)
+    images = {label.image: render_receipt(label, display_names=names) for label in labels}
 
     normal_count = sum(1 for label in labels if label.adversarial is AdversarialKind.NONE)
     assert normal_count == len(labels) - len(adversarial_labels)
