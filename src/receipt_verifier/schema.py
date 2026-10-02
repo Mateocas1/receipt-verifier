@@ -24,8 +24,7 @@ from pydantic import (
 )
 
 from receipt_verifier.identifiers import (
-    is_valid_alias,
-    is_valid_cbu_or_cvu,
+    is_valid_destination,
     quantize_amount,
 )
 
@@ -155,13 +154,11 @@ class Destination(BaseModel):
 
     @model_validator(mode="after")
     def _validate_value(self) -> Self:
-        if self.kind is DestinationKind.ALIAS:
-            if not is_valid_alias(self.value):
-                raise ValueError(f"invalid alias: {self.value!r}")
+        if is_valid_destination(self.kind.value, self.value):
             return self
-        if not is_valid_cbu_or_cvu(self.value):
-            raise ValueError(f"invalid {self.kind.value} check digits: {self.value!r}")
-        return self
+        if self.kind is DestinationKind.ALIAS:
+            raise ValueError(f"invalid alias: {self.value!r}")
+        raise ValueError(f"invalid {self.kind.value} check digits: {self.value!r}")
 
     @property
     def key(self) -> str:

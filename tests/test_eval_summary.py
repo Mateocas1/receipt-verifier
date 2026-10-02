@@ -65,6 +65,8 @@ def make_report(
             "prompt_tokens": 900,
             "completion_tokens": 100,
             "extractor_errors": 0,
+            "destination_retries": 2,
+            "retry_latency_total_ms": 2_400.0,
         },
         "outcomes": outcomes,
     }
@@ -104,6 +106,31 @@ class TestAggregation:
         assert row["prompt_tokens"] == 900
         assert row["completion_tokens"] == 100
         assert row["total_tokens"] == 1000
+
+    def test_retry_counts_and_mean_latency_are_carried(self) -> None:
+        row = summarize_report(make_report())
+        assert row["destination_retries"] == 2
+        assert row["retry_latency_total_ms"] == 2_400.0
+        assert row["retry_latency_mean_ms"] == 1_200.0
+
+    def test_no_retries_report_a_zero_mean(self) -> None:
+        report = make_report()
+        report["metrics"]["destination_retries"] = 0  # type: ignore[index]
+        report["metrics"]["retry_latency_total_ms"] = 0.0  # type: ignore[index]
+        row = summarize_report(report)
+        assert row["retry_latency_mean_ms"] == 0.0
+
+    def test_the_dataset_cell_marks_a_retry_run(self) -> None:
+        plain = summarize_report(make_report())
+        retried = summarize_report(make_report())
+        retried["destination_retry"] = True
+        table = render_markdown([plain, retried])
+        assert "| synthetic v1 |" in table
+        assert "| synthetic v1 + retry |" in table
+
+    def test_a_report_without_the_flag_summarizes_as_plain(self) -> None:
+        row = summarize_report(make_report())
+        assert row["destination_retry"] is False
 
     def test_injection_detail_comes_from_the_sample_rows(self) -> None:
         row = summarize_report(make_report())

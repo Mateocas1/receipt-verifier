@@ -38,6 +38,8 @@ class EvaluationReport(BaseModel):
     dataset_seed: int
     evaluation_at: datetime
     noise: float = 0.0
+    destination_retry: bool = False
+    """Whether the measured extractor carried the focused destination re-ask."""
     metrics: Metrics
     outcomes: tuple[SampleOutcome, ...]
 
@@ -49,6 +51,7 @@ def run_evaluation(
     now: datetime | None = None,
     policy: ValidationPolicy | None = None,
     noise: float = 0.0,
+    destination_retry: bool = False,
     on_sample: Callable[[int, int], None] | None = None,
 ) -> EvaluationReport:
     """Extract, validate and score every label of a dataset, in dataset order.
@@ -104,6 +107,7 @@ def run_evaluation(
         dataset_seed=dataset.manifest.seed,
         evaluation_at=evaluation_at,
         noise=noise,
+        destination_retry=destination_retry,
         metrics=compute_metrics(frozen),
         outcomes=frozen,
     )
@@ -118,6 +122,7 @@ def render_table(report: EvaluationReport) -> str:
     lines.append(f"seed          {report.dataset_seed}")
     lines.append(f"evaluation_at {report.evaluation_at.isoformat()}")
     lines.append(f"extractor     {report.extractor} (noise={report.noise:.2f})")
+    lines.append(f"destination_retry {report.destination_retry}")
     lines.append(f"samples       {metrics.n}")
     lines.append("")
     lines.append("per-field exact match")
@@ -165,6 +170,9 @@ def render_table(report: EvaluationReport) -> str:
         ("completion tokens", str(metrics.completion_tokens)),
         ("total tokens", str(metrics.prompt_tokens + metrics.completion_tokens)),
         ("extractor errors", str(metrics.extractor_errors)),
+        ("destination retries", str(metrics.destination_retries)),
+        ("retry latency mean ms", f"{metrics.retry_latency_mean_ms:.2f}"),
+        ("retry latency total ms", f"{metrics.retry_latency_total_ms:.2f}"),
     ]
     lines.append("")
     for name, value in rows:

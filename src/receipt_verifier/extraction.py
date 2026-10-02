@@ -73,6 +73,10 @@ class ExtractionResult(BaseModel):
     cost_usd: Decimal = Decimal("0")
     prompt_tokens: int = Field(default=0, ge=0)
     completion_tokens: int = Field(default=0, ge=0)
+    destination_retries: int = Field(default=0, ge=0)
+    """Focused destination re-asks this reading cost (0 or 1)."""
+    retry_latency_ms: float = 0.0
+    """Wall time spent in those re-asks, so the added latency is reportable."""
     error: str = ""
     """Why this reading is empty, when the extractor itself failed."""
 
@@ -92,4 +96,18 @@ class ReceiptExtractor(Protocol):
 
     def extract(self, image: bytes) -> ExtractionResult:
         """Extract fields from one receipt image."""
+        ...
+
+
+@runtime_checkable
+class DestinationRefiner(Protocol):
+    """An extractor that can re-read the destination alone with a focused prompt.
+
+    Only method members on purpose: the retry wrapper checks for this capability with
+    ``isinstance``, and a runtime-checkable protocol with data members does not support
+    that check on every interpreter.
+    """
+
+    def refine_destination(self, image: bytes) -> ExtractionResult:
+        """Read only the destination of one receipt image."""
         ...

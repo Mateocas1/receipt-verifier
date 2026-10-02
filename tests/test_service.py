@@ -12,7 +12,8 @@ from fastapi.testclient import TestClient
 
 from receipt_verifier.circuit import CircuitBreaker, GuardedExtractor
 from receipt_verifier.extractors.cascade import CascadeExtractor
-from receipt_verifier.extractors.llm import LlmTransportError
+from receipt_verifier.extractors.llm import LlmTransportError, VisionLlmExtractor
+from receipt_verifier.extractors.retry import DestinationRetryExtractor
 from receipt_verifier.ratelimit import RequestLimiter
 from receipt_verifier.schema import VerdictReason
 from receipt_verifier.service import Settings, create_app
@@ -55,6 +56,14 @@ def stub(name: str = "ocr", **kwargs: object) -> StubExtractor:
     return StubExtractor(name, result=reading(name, **kwargs))
 
 
+def vision_stage(inner: object) -> VisionLlmExtractor:
+    """Unwrap the focused-retry decorator a vision stage may carry."""
+    if isinstance(inner, DestinationRetryExtractor):
+        inner = inner.inner
+    assert isinstance(inner, VisionLlmExtractor)
+    return inner
+
+
 def post_json(
     test_client: TestClient,
     image: bytes = PNG,
@@ -78,6 +87,7 @@ class TestHealthAndAuth:
         assert payload["status"] == "ok"
         assert payload["token_configured"] is True
         assert payload["allowed_destinations"] == 1
+        assert payload["destination_retry"] is True
 
     def test_missing_token_is_rejected(self) -> None:
         response = post_json(client(), headers={})
@@ -350,6 +360,7 @@ class TestSettings:
         assert settings.max_image_bytes == 8 * 1024 * 1024
         assert not settings.llm.configured
         assert settings.llm.max_tokens == DEFAULT_LLM_MAX_TOKENS
+        assert settings.destination_retry is False
 
     def test_env_never_prints_the_api_key(self) -> None:
         settings = Settings.from_env({"LLM_API_KEY": "secret-key"})
@@ -376,8 +387,37 @@ class TestSettings:
         )
         limiter = RequestLimiter(rpm=3)
         cascade = settings.build_extractor(limiter=limiter)
-        transports = [stage.inner.transport for stage in cascade.stages]
+        engines = [vision_stage(stage.inner) for stage in cascade.stages]
+        transports = [engine.transport for engine in engines]
         assert [transport.limiter for transport in transports] == [limiter, limiter]
+
+    def test_a_vision_stage_gets_the_focused_destination_retry_when_enabled(self) -> None:
+        settings = Settings.from_env(
+            {
+                "LLM_API_KEY": "k",
+                "VISION_MODEL_PRIMARY": "vision-1",
+                "RECEIPT_VERIFIER_ALLOWED_DESTINATIONS": "alias:camila.gomez.ar",
+                "RECEIPT_VERIFIER_ENABLE_OCR": "false",
+                "RECEIPT_VERIFIER_DESTINATION_RETRY": "true",
+            }
+        )
+        cascade = settings.build_extractor()
+        stage = cascade.stages[0].inner
+        assert isinstance(stage, DestinationRetryExtractor)
+        assert stage.can_retry
+        assert stage.inner.name == "llm-primary"
+
+    def test_the_retry_is_off_by_default(self) -> None:
+        settings = Settings.from_env(
+            {
+                "LLM_API_KEY": "k",
+                "VISION_MODEL_PRIMARY": "vision-1",
+                "RECEIPT_VERIFIER_ALLOWED_DESTINATIONS": "alias:camila.gomez.ar",
+                "RECEIPT_VERIFIER_ENABLE_OCR": "false",
+            }
+        )
+        stage = settings.build_extractor().stages[0].inner
+        assert isinstance(stage, VisionLlmExtractor)
 
     def test_destination_parsing_handles_bare_values(self) -> None:
         keys = parse_allowed_destinations(

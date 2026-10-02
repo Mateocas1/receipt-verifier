@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-10-02T18:55:17.411482+00:00",
+  "generated_at": "2026-10-02T19:51:29.586931+00:00",
   "provider": {
     "base_url": "https://api.nan.builders/v1",
     "rpm": 20,
@@ -118,6 +118,7 @@
     {
       "extractor": "dummy",
       "dataset": "synthetic v1",
+      "destination_retry": false,
       "field_accuracy": 1.0,
       "field_accuracy_readable": 1.0,
       "per_field": {
@@ -152,6 +153,9 @@
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "extractor_errors": 0,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "dummy": 150
       },
@@ -222,6 +226,7 @@
     {
       "extractor": "ocr",
       "dataset": "synthetic v1",
+      "destination_retry": false,
       "field_accuracy": 1.0,
       "field_accuracy_readable": 1.0,
       "per_field": {
@@ -256,6 +261,9 @@
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "extractor_errors": 0,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "ocr": 150
       },
@@ -326,6 +334,7 @@
     {
       "extractor": "llm-deepseek-v4-flash",
       "dataset": "synthetic v1",
+      "destination_retry": false,
       "field_accuracy": 0.9333333333333333,
       "field_accuracy_readable": 0.995,
       "per_field": {
@@ -360,6 +369,9 @@
       "prompt_tokens": 101550,
       "completion_tokens": 56917,
       "extractor_errors": 0,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "llm-deepseek-v4-flash": 150
       },
@@ -436,6 +448,7 @@
     {
       "extractor": "llm-qwen3.8-flash",
       "dataset": "synthetic v1",
+      "destination_retry": false,
       "field_accuracy": 0.9466666666666667,
       "field_accuracy_readable": 0.9983333333333333,
       "per_field": {
@@ -470,6 +483,9 @@
       "prompt_tokens": 139352,
       "completion_tokens": 96339,
       "extractor_errors": 0,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "llm-qwen3.8-flash": 150
       },
@@ -545,6 +561,7 @@
     {
       "extractor": "llm-mimo-v2.6-flash",
       "dataset": "synthetic v1",
+      "destination_retry": false,
       "field_accuracy": 0.9370370370370371,
       "field_accuracy_readable": 0.9966666666666667,
       "per_field": {
@@ -579,6 +596,9 @@
       "prompt_tokens": 124587,
       "completion_tokens": 38122,
       "extractor_errors": 0,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "llm-mimo-v2.6-flash": 150
       },
@@ -655,6 +675,7 @@
     {
       "extractor": "llm-glm5.3-flash",
       "dataset": "synthetic v1",
+      "destination_retry": false,
       "field_accuracy": 0.9311111111111112,
       "field_accuracy_readable": 0.9966666666666667,
       "per_field": {
@@ -689,6 +710,9 @@
       "prompt_tokens": 163950,
       "completion_tokens": 71187,
       "extractor_errors": 0,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "llm-glm5.3-flash": 150
       },
@@ -766,6 +790,7 @@
     {
       "extractor": "llm-qwen3.6",
       "dataset": "synthetic v1",
+      "destination_retry": false,
       "field_accuracy": 0.8177777777777778,
       "field_accuracy_readable": 0.8591666666666666,
       "per_field": {
@@ -800,6 +825,9 @@
       "prompt_tokens": 128912,
       "completion_tokens": 264169,
       "extractor_errors": 10,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "llm-qwen3.6": 150
       },
@@ -878,6 +906,7 @@
     {
       "extractor": "llm-gemma4",
       "dataset": "synthetic v1",
+      "destination_retry": false,
       "field_accuracy": 0.8770370370370371,
       "field_accuracy_readable": 0.9291666666666667,
       "per_field": {
@@ -912,6 +941,9 @@
       "prompt_tokens": 80780,
       "completion_tokens": 225200,
       "extractor_errors": 10,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "llm-gemma4": 150
       },
@@ -991,6 +1023,7 @@
     {
       "extractor": "cascade",
       "dataset": "synthetic v1",
+      "destination_retry": false,
       "field_accuracy": 0.9948148148148148,
       "field_accuracy_readable": 0.9991666666666666,
       "per_field": {
@@ -1025,6 +1058,9 @@
       "prompt_tokens": 61418,
       "completion_tokens": 35589,
       "extractor_errors": 0,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "llm-primary": 70,
         "llm-secondary": 15,
@@ -1097,6 +1133,7 @@
     {
       "extractor": "dummy",
       "dataset": "synthetic v2",
+      "destination_retry": false,
       "field_accuracy": 1.0,
       "field_accuracy_readable": 1.0,
       "per_field": {
@@ -1131,6 +1168,9 @@
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "extractor_errors": 0,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "dummy": 150
       },
@@ -1201,6 +1241,7 @@
     {
       "extractor": "ocr",
       "dataset": "synthetic v2",
+      "destination_retry": false,
       "field_accuracy": 1.0,
       "field_accuracy_readable": 1.0,
       "per_field": {
@@ -1235,6 +1276,9 @@
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "extractor_errors": 0,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "ocr": 150
       },
@@ -1305,6 +1349,7 @@
     {
       "extractor": "llm-deepseek-v4-flash",
       "dataset": "synthetic v2",
+      "destination_retry": false,
       "field_accuracy": 0.9970370370370369,
       "field_accuracy_readable": 0.9966666666666667,
       "per_field": {
@@ -1339,6 +1384,9 @@
       "prompt_tokens": 114900,
       "completion_tokens": 41921,
       "extractor_errors": 0,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "llm-deepseek-v4-flash": 150
       },
@@ -1409,6 +1457,7 @@
     {
       "extractor": "llm-qwen3.8-flash",
       "dataset": "synthetic v2",
+      "destination_retry": false,
       "field_accuracy": 0.9837037037037037,
       "field_accuracy_readable": 0.9833333333333334,
       "per_field": {
@@ -1443,6 +1492,9 @@
       "prompt_tokens": 150428,
       "completion_tokens": 71143,
       "extractor_errors": 1,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "llm-qwen3.8-flash": 150
       },
@@ -1517,6 +1569,7 @@
     {
       "extractor": "cascade",
       "dataset": "synthetic v2",
+      "destination_retry": false,
       "field_accuracy": 0.9955555555555556,
       "field_accuracy_readable": 0.995,
       "per_field": {
@@ -1551,6 +1604,9 @@
       "prompt_tokens": 114900,
       "completion_tokens": 41590,
       "extractor_errors": 0,
+      "destination_retries": null,
+      "retry_latency_total_ms": null,
+      "retry_latency_mean_ms": 0.0,
       "extractor_usage": {
         "llm-primary": 150
       },
@@ -1618,6 +1674,114 @@
         }
       },
       "role": "cascade"
+    },
+    {
+      "extractor": "llm-deepseek-v4-flash",
+      "dataset": "synthetic v2",
+      "destination_retry": true,
+      "field_accuracy": 0.9992592592592593,
+      "field_accuracy_readable": 0.9991666666666666,
+      "per_field": {
+        "amount": 1.0,
+        "amount_detail": 1.0,
+        "transferred_at": 1.0,
+        "sender_name": 1.0,
+        "sender_bank": 1.0,
+        "destination": 0.9933333333333333,
+        "operation_id": 1.0,
+        "issuer": 1.0,
+        "memo": 1.0
+      },
+      "total_tokens": 167203,
+      "total_cost_usd": "0",
+      "n": 150,
+      "approve_precision": 1.0,
+      "approve_recall": 0.9916666666666667,
+      "approve_f1": 0.99581589958159,
+      "false_approvals": 0,
+      "false_approval_rate": 0.0,
+      "adversarial_n": 30,
+      "adversarial_false_approvals": 0,
+      "adversarial_false_approval_rate": 0.0,
+      "manual_reviews": 6,
+      "manual_review_rate": 0.04,
+      "approval_rate": 0.7933333333333333,
+      "coverage": 1.0,
+      "latency_mean_ms": 3744.5085418535746,
+      "latency_p50_ms": 3346.564978986862,
+      "latency_p95_ms": 6088.954539998667,
+      "prompt_tokens": 121284,
+      "completion_tokens": 45919,
+      "extractor_errors": 0,
+      "destination_retries": 8,
+      "retry_latency_total_ms": 30059.03275599121,
+      "retry_latency_mean_ms": 3757.3790944989014,
+      "extractor_usage": {
+        "llm-deepseek-v4-flash": 150
+      },
+      "injected_instructions": {
+        "n": 6,
+        "decisions": {
+          "reject": 6
+        },
+        "approved": 0,
+        "reasons": {
+          "prompt_injection": 6
+        }
+      },
+      "adversarial_by_kind": {
+        "edited_amount": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "amount_mismatch": 6
+          }
+        },
+        "wrong_destination": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "destination_mismatch": 6
+          }
+        },
+        "duplicate_operation_id": {
+          "n": 6,
+          "decisions": {
+            "manual_review": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "duplicate_operation_id": 6
+          }
+        },
+        "injected_instruction": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "prompt_injection": 6
+          }
+        },
+        "stale_date": {
+          "n": 6,
+          "decisions": {
+            "reject": 6
+          },
+          "approved": 0,
+          "reasons": {
+            "stale_date": 6
+          }
+        }
+      },
+      "role": "vision-model-retry"
     }
   ]
 }
