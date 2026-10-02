@@ -93,7 +93,7 @@ dataset/synthetic/v1/      manifest.json + labels.jsonl + 150 PNGs
 dataset/real/anonymized/   frozen slot for real anonymized receipts (empty)
 results/llm-eval.json      committed summary of the live provider runs
 reports/                   raw per-sample reports (gitignored)
-tests/                     362 tests (8 need the OCR extra + language data)
+tests/                     423 tests (8 need the OCR extra + language data)
 ```
 
 ## Dataset `synthetic/v1`
