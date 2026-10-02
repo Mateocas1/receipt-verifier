@@ -99,6 +99,29 @@ def field_accuracy(metrics: Mapping[str, Any]) -> float | None:
     return sum(float(row["matches"]) / float(row["total"]) for row in rows) / len(rows)
 
 
+NON_READABLE_FIELDS: tuple[str, ...] = ("issuer",)
+"""Fields the synthetic images cannot carry.
+
+The renderer prints invented placeholder names ("Billetera A", "Banco Digital C") instead
+of the issuer code, so no model can read ``issuer`` off the image; a high score there is an
+inference from correlated layout and vocabulary, not evidence about real receipts. The
+headline accuracy therefore excludes it, and the per-field table still reports it.
+"""
+
+
+def readable_field_accuracy(metrics: Mapping[str, Any]) -> float | None:
+    """Mean per-field exact match over the fields the image can actually carry."""
+    per_field = per_field_accuracy(metrics)
+    readable = [
+        value
+        for name, value in per_field.items()
+        if name not in NON_READABLE_FIELDS and value is not None
+    ]
+    if not readable:
+        return None
+    return sum(readable) / len(readable)
+
+
 def per_field_accuracy(metrics: Mapping[str, Any]) -> dict[str, float | None]:
     rows = metrics.get("per_field") or []
     return {
@@ -135,6 +158,7 @@ def summarize_report(report: Mapping[str, Any]) -> dict[str, Any]:
         "extractor": report.get("extractor"),
         "dataset": f"{report.get('dataset_name')} {report.get('dataset_version')}",
         "field_accuracy": field_accuracy(metrics),
+        "field_accuracy_readable": readable_field_accuracy(metrics),
         "per_field": per_field_accuracy(metrics),
         "total_tokens": prompt_tokens + completion_tokens,
         "total_cost_usd": str(metrics.get("total_cost_usd", "0")),
@@ -180,7 +204,7 @@ def render_markdown(runs: Sequence[Mapping[str, Any]]) -> str:
             "| `{extractor}` | {field} | {precision} | {recall} | {false_approvals} "
             "({adv}/{adv_n}) | {manual} | {p50} / {p95} | {tokens} |".format(
                 extractor=run.get("extractor", "?"),
-                field=_rate_cell(run.get("field_accuracy")),
+                field=_rate_cell(run.get("field_accuracy_readable") or run.get("field_accuracy")),
                 precision=_rate_cell(run.get("approve_precision")),
                 recall=_rate_cell(run.get("approve_recall")),
                 false_approvals=run.get("false_approvals", "?"),
@@ -196,10 +220,12 @@ def render_markdown(runs: Sequence[Mapping[str, Any]]) -> str:
 
 
 __all__ = [
+    "NON_READABLE_FIELDS",
     "SUMMARIZABLE_FIELDS",
     "adversarial_summary",
     "field_accuracy",
     "per_field_accuracy",
+    "readable_field_accuracy",
     "render_markdown",
     "summarize_report",
 ]

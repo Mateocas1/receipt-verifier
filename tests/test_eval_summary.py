@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from receipt_verifier.eval_summary import (
+    NON_READABLE_FIELDS,
     adversarial_summary,
     field_accuracy,
     per_field_accuracy,
+    readable_field_accuracy,
     render_markdown,
     summarize_report,
 )
@@ -74,6 +76,20 @@ class TestAggregation:
         assert field_accuracy(metrics) == 0.9  # type: ignore[arg-type]
         assert per_field_accuracy(metrics) == {"amount": 0.9, "memo": 0.9}  # type: ignore[arg-type]
 
+    def test_readable_accuracy_excludes_the_field_the_image_cannot_carry(self) -> None:
+        metrics = {
+            "per_field": [
+                {"field": "amount", "matches": 10, "total": 10},
+                {"field": "issuer", "matches": 4, "total": 10},
+            ]
+        }
+        assert "issuer" in NON_READABLE_FIELDS
+        assert field_accuracy(metrics) == 0.7
+        assert readable_field_accuracy(metrics) == 1.0
+
+    def test_readable_accuracy_falls_back_to_none_without_fields(self) -> None:
+        assert readable_field_accuracy({"per_field": []}) is None
+
     def test_rate_properties_are_derived_from_counts(self) -> None:
         row = summarize_report(make_report())
         assert row["approve_precision"] == 1.0
@@ -117,7 +133,13 @@ class TestMarkdown:
 
     def test_tokens_are_shown_per_receipt(self) -> None:
         table = render_markdown([summarize_report(make_report())])
-        assert "| 333 |" in table  # 1000 tokens over 3 samples
+        assert "| 333 |" in table
+
+    def test_table_prefers_the_readable_accuracy(self) -> None:
+        row = summarize_report(make_report())
+        row["field_accuracy"] = 0.1
+        row["field_accuracy_readable"] = 0.9
+        assert "| 0.900 |" in render_markdown([row])  # 1000 tokens over 3 samples
 
     def test_undefined_rates_render_as_not_available(self) -> None:
         report = make_report()
