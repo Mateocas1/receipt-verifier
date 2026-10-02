@@ -94,7 +94,7 @@ dataset/synthetic/v2/      current dataset: same labels, published issuer names
 dataset/real/anonymized/   frozen slot for real anonymized receipts (empty)
 results/llm-eval.json      committed summary of the live provider runs
 reports/                   raw per-sample reports (gitignored)
-tests/                     423 tests (8 need the OCR extra + language data)
+tests/                     452 tests (12 more with the OCR extra + language data)
 ```
 
 ## Datasets `synthetic/v1` (frozen) and `synthetic/v2` (current)
