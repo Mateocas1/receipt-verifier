@@ -20,12 +20,15 @@ from receipt_verifier.synthetic.generate import (
     DECISION_BY_KIND,
     DEFAULT_GENERATED_AT,
     DEFAULT_SEED,
+    DEFAULT_VERSION,
     NORMAL_PER_ISSUER,
     REASON_BY_KIND,
     build_dataset,
 )
 
-COMMITTED_DATASET = Path(__file__).resolve().parents[1] / "dataset" / "synthetic" / "v1"
+SYNTHETIC_ROOT = Path(__file__).resolve().parents[1] / "dataset" / "synthetic"
+COMMITTED_DATASETS = (SYNTHETIC_ROOT / "v1", SYNTHETIC_ROOT / "v2")
+CURRENT_DATASET = SYNTHETIC_ROOT / "v2"
 
 
 def digests(bundle: DatasetBundle) -> dict[str, str]:
@@ -218,13 +221,15 @@ class TestRoundTrip:
         assert loaded.manifest.adversarial_counts == bundle.manifest.adversarial_counts
 
 
-@pytest.mark.skipif(not COMMITTED_DATASET.exists(), reason="committed dataset not present")
+@pytest.mark.parametrize("root", COMMITTED_DATASETS, ids=["v1", "v2"])
 class TestCommittedDataset:
-    def test_manifest_matches_the_generator_contract(self) -> None:
-        dataset = load_dataset(COMMITTED_DATASET)
+    def test_manifest_matches_the_generator_contract(self, root: Path) -> None:
+        if not root.exists():  # pragma: no cover - the repositories always ship them
+            pytest.skip("committed dataset not present")
+        dataset = load_dataset(root)
         manifest = dataset.manifest
         assert isinstance(manifest, DatasetManifest)
-        assert manifest.version == "v1"
+        assert manifest.version == root.name
         assert manifest.sample_count == len(dataset.labels)
         assert manifest.counts[Decision.APPROVE.value] == NORMAL_PER_ISSUER * len(Issuer)
         assert manifest.counts[Decision.REJECT.value] == (len(ADVERSARIAL_ORDER) - 1) * len(Issuer)
@@ -234,8 +239,8 @@ class TestCommittedDataset:
         }
         assert manifest.evaluation_at.tzinfo is not None
 
-    def test_labels_are_reproducible_from_the_manifest(self) -> None:
-        dataset = load_dataset(COMMITTED_DATASET)
+    def test_labels_are_reproducible_from_the_manifest(self, root: Path) -> None:
+        dataset = load_dataset(root)
         manifest = dataset.manifest
         rebuilt = build_dataset(
             seed=manifest.seed,
@@ -246,9 +251,18 @@ class TestCommittedDataset:
         assert rebuilt.labels == dataset.labels
         assert rebuilt.manifest == manifest
 
-    def test_every_committed_image_exists(self) -> None:
-        dataset = load_dataset(COMMITTED_DATASET)
+    def test_every_committed_image_exists(self, root: Path) -> None:
+        dataset = load_dataset(root)
         for label in dataset.labels:
             path = dataset.image_path(label)
             assert path.is_file(), path
             assert path.stat().st_size > 0
+
+
+class TestCurrentDataset:
+    def test_the_generator_default_is_the_current_committed_dataset(self) -> None:
+        assert CURRENT_DATASET.name == DEFAULT_VERSION
+        assert (CURRENT_DATASET / "manifest.json").is_file()
+
+    def test_the_previous_version_is_still_present_for_replay(self) -> None:
+        assert (SYNTHETIC_ROOT / "v1" / "manifest.json").is_file()

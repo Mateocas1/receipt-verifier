@@ -1,6 +1,6 @@
 """Generate the synthetic labeled dataset.
 
-uv run python scripts/generate_synthetic.py --out dataset/synthetic/v1
+uv run python scripts/generate_synthetic.py --out dataset/synthetic/v2
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from receipt_verifier.synthetic.generate import (
     build_dataset,
 )
 
-DEFAULT_OUT: Final = Path("dataset/synthetic/v1")
+DEFAULT_OUT: Final = Path("dataset/synthetic/v2")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

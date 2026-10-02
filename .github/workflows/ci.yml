@@ -45,7 +45,7 @@ jobs:
       - name: Evaluate the dummy extractor on the synthetic set
         run: |
           uv run python scripts/evaluate.py \
-            --dataset dataset/synthetic/v1 \
+            --dataset dataset/synthetic/v2 \
             --extractor dummy \
             --max-false-approvals 0 \
             --json reports/ci-eval-dummy.json
@@ -81,7 +81,7 @@ jobs:
       - name: Evaluate the OCR extractor (false approvals must stay 0)
         run: |
           uv run python scripts/evaluate.py \
-            --dataset dataset/synthetic/v1 \
+            --dataset dataset/synthetic/v2 \
             --extractor ocr \
             --max-false-approvals 0 \
             --json reports/ci-eval-ocr.json

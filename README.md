@@ -28,17 +28,17 @@ uv sync --extra ocr                           # optional: local Tesseract OCR st
 export OCR_TESSDATA=/usr/share/tesseract-ocr/5/tessdata   # if not auto-discovered
 
 # 1. dataset + harness
-uv run python scripts/generate_synthetic.py   # rebuild dataset/synthetic/v1
-uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor dummy
-uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor ocr
+uv run python scripts/generate_synthetic.py   # rebuild dataset/synthetic/v2
+uv run python scripts/evaluate.py --dataset dataset/synthetic/v2 --extractor dummy
+uv run python scripts/evaluate.py --dataset dataset/synthetic/v2 --extractor ocr
 
 # 2. live vision models (needs LLM_API_KEY; paces itself through EVAL_RPM, default 20/min)
 uv run python scripts/probe_vision_models.py                             # which models read images
 LLM_MAX_TOKENS=3000 LLM_TIMEOUT_SECONDS=120 \
-  uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor llm \
+  uv run python scripts/evaluate.py --dataset dataset/synthetic/v2 --extractor llm \
   --model deepseek-v4-flash --json reports/eval-llm-deepseek-v4-flash.json
 VISION_MODEL_PRIMARY=deepseek-v4-flash VISION_MODEL_SECONDARY=qwen3.8-flash \
-  uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor cascade
+  uv run python scripts/evaluate.py --dataset dataset/synthetic/v2 --extractor cascade
 uv run python scripts/summarize_llm_eval.py --report reports/eval-cascade.json --markdown
 
 # 3. service
@@ -89,16 +89,19 @@ src/receipt_verifier/
 └── service/              settings, imaging, registry, response models, FastAPI app
 scripts/{generate_synthetic,evaluate,probe_vision_models,summarize_llm_eval,serve}.py
 Dockerfile                 non-root slim image with Tesseract language data
-dataset/synthetic/v1/      manifest.json + labels.jsonl + 150 PNGs
+dataset/synthetic/v1/      frozen dataset: 150 PNGs + labels.jsonl + manifest.json
+dataset/synthetic/v2/      current dataset: same labels, published issuer names
 dataset/real/anonymized/   frozen slot for real anonymized receipts (empty)
 results/llm-eval.json      committed summary of the live provider runs
 reports/                   raw per-sample reports (gitignored)
 tests/                     423 tests (8 need the OCR extra + language data)
 ```
 
-## Dataset `synthetic/v1`
+## Datasets `synthetic/v1` (frozen) and `synthetic/v2` (current)
 
-150 receipts, 6.1 MiB of PNGs, produced by a single seeded generator.
+150 receipts each, 6.1 MiB of PNGs each, produced by a single seeded generator. `v2` is the
+default for the harness, the scripts and CI; `v1` stays committed and runnable — same labels,
+different printed issuer names — so older numbers remain reproducible.
 
 | | Count | Notes |
 | --- | --- | --- |
@@ -108,17 +111,23 @@ tests/                     423 tests (8 need the OCR extra + language data)
 | **Total** | **150** | images committed because the folder is well under the ~15 MB budget |
 
 Six layout families are rendered with **generic text only** — no logo, wordmark or real
-institution name. The issuer style is the only thing that reveals the issuer, which is
-exactly what a layout-based extractor has to notice.
+institution name. `v2` prints a **published, 1:1 issuer name** in the header, so anything that
+can read the header (a model, a parser, a person) can recover the issuer code; the layout
+vocabulary remains the fallback, which is what keeps `v1` readable.
 
-| Issuer key | Placeholder name on the image | Layout family |
-| --- | --- | --- |
-| `mp` | Billetera A | full-width band, centered amount |
-| `uala` | Billetera B | rounded card, left-aligned amount |
-| `brubank` | Banco Digital C | dark band, table rows, right-aligned amount |
-| `galicia` | Banco D | minimal, accent rule, stacked labels |
-| `santander` | Banco E | boxed header, left-aligned amount |
-| `bna` | Banco Público F | bordered official "constancia" |
+| Issuer key | `v2` printed name | `v1` printed name (frozen) | Layout family |
+| --- | --- | --- | --- |
+| `mp` | Billetera Alfa | Billetera A | full-width band, centered amount |
+| `uala` | Billetera Beta | Billetera B | rounded card, left-aligned amount |
+| `brubank` | Banco Digital Gamma | Banco Digital C | dark band, table rows, right-aligned amount |
+| `galicia` | Banco Delta | Banco D | minimal, accent rule, stacked labels |
+| `santander` | Banco Epsilon | Banco E | boxed header, left-aligned amount |
+| `bna` | Banco Publico Zeta | Banco Público F | bordered official "constancia" |
+
+The table is code (`ISSUER_DISPLAY_NAMES` in `src/receipt_verifier/schema.py`), not prose: the
+renderer, the OCR reader and the extraction prompt all derive from it, so the printed name and
+the label's issuer code cannot drift (`tests/test_issuers.py` asserts the mapping is total and
+1:1, and that the extraction prompt publishes it).
 
 Every image ends with `Comprobante sintético · datos ficticios · sin validez legal`, so a
 leaked file can never be mistaken for evidence. Long values (the free-text concept) wrap
