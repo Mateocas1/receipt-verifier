@@ -75,6 +75,10 @@ class SampleOutcome(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     extractor_error: str = ""
+    destination_retries: int = 0
+    """Focused destination re-asks this sample cost (0 or 1)."""
+    retry_latency_ms: float = 0.0
+    """Wall time spent in those re-asks, measured around the focused call."""
 
     @property
     def copied_reasons(self) -> tuple[VerdictReason, ...]:
@@ -108,6 +112,17 @@ class Metrics(BaseModel):
     completion_tokens: int = 0
     extractor_errors: int = 0
     """Samples where the extractor failed instead of returning a reading."""
+    destination_retries: int = 0
+    """Samples that used a focused destination re-ask."""
+    retry_latency_total_ms: float = 0.0
+    """Wall time the focused re-asks added across the run."""
+
+    @property
+    def retry_latency_mean_ms(self) -> float:
+        """Mean added latency per retried receipt (0 when nothing retried)."""
+        if not self.destination_retries:
+            return 0.0
+        return self.retry_latency_total_ms / self.destination_retries
 
     @property
     def approve_precision(self) -> MetricValue:
@@ -246,6 +261,8 @@ def evaluate_sample(
         prompt_tokens=extraction.prompt_tokens,
         completion_tokens=extraction.completion_tokens,
         extractor_error=extraction.error,
+        destination_retries=extraction.destination_retries,
+        retry_latency_ms=extraction.retry_latency_ms,
     )
 
 
@@ -320,6 +337,8 @@ def compute_metrics(outcomes: tuple[SampleOutcome, ...]) -> Metrics:
         prompt_tokens=sum(o.prompt_tokens for o in outcomes),
         completion_tokens=sum(o.completion_tokens for o in outcomes),
         extractor_errors=sum(1 for o in outcomes if o.extractor_error),
+        destination_retries=sum(1 for o in outcomes if o.destination_retries),
+        retry_latency_total_ms=sum(o.retry_latency_ms for o in outcomes),
     )
 
 

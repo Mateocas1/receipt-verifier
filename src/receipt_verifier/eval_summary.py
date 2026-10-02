@@ -30,6 +30,9 @@ SUMMARIZABLE_FIELDS: tuple[str, ...] = (
     "prompt_tokens",
     "completion_tokens",
     "extractor_errors",
+    "destination_retries",
+    "retry_latency_total_ms",
+    "retry_latency_mean_ms",
 )
 """Metric keys copied verbatim from the harness report into the summary."""
 
@@ -78,6 +81,11 @@ _DERIVED: dict[str, Any] = {
     "approve_precision": _precision,
     "approve_recall": _recall,
     "approve_f1": _f1,
+    "retry_latency_mean_ms": lambda m: (
+        float(m.get("retry_latency_total_ms") or 0) / int(m.get("destination_retries"))
+        if m.get("destination_retries")
+        else 0.0
+    ),
     "false_approval_rate": lambda m: _rate(
         m.get("false_approvals"),
         _sum_of(m.get("approve_false_positives"), m.get("approve_true_negatives")),

@@ -165,6 +165,9 @@ def render_table(report: EvaluationReport) -> str:
         ("completion tokens", str(metrics.completion_tokens)),
         ("total tokens", str(metrics.prompt_tokens + metrics.completion_tokens)),
         ("extractor errors", str(metrics.extractor_errors)),
+        ("destination retries", str(metrics.destination_retries)),
+        ("retry latency mean ms", f"{metrics.retry_latency_mean_ms:.2f}"),
+        ("retry latency total ms", f"{metrics.retry_latency_total_ms:.2f}"),
     ]
     lines.append("")
     for name, value in rows:

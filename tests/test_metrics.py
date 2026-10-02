@@ -35,6 +35,8 @@ def outcome(
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
     extractor_error: str = "",
+    destination_retries: int = 0,
+    retry_latency_ms: float = 0.0,
 ) -> SampleOutcome:
     return SampleOutcome(
         sample_id=sample_id,
@@ -53,6 +55,8 @@ def outcome(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         extractor_error=extractor_error,
+        destination_retries=destination_retries,
+        retry_latency_ms=retry_latency_ms,
     )
 
 
@@ -227,6 +231,35 @@ class TestConfusionMetrics:
     def test_extractor_usage_is_tallied(self) -> None:
         metrics = compute_metrics(TWO_BY_TWO)
         assert metrics.extractor_usage == {"stub": 4}
+
+    def test_destination_retries_and_their_latency_are_aggregated(self) -> None:
+        outcomes = (
+            outcome("a", expected=Decision.APPROVE, predicted=Decision.APPROVE),
+            outcome(
+                "b",
+                expected=Decision.APPROVE,
+                predicted=Decision.APPROVE,
+                destination_retries=1,
+                retry_latency_ms=1_200.0,
+            ),
+            outcome(
+                "c",
+                expected=Decision.APPROVE,
+                predicted=Decision.APPROVE,
+                destination_retries=1,
+                retry_latency_ms=800.0,
+            ),
+        )
+        metrics = compute_metrics(outcomes)
+        assert metrics.destination_retries == 2
+        assert metrics.retry_latency_total_ms == 2_000.0
+        assert metrics.retry_latency_mean_ms == 1_000.0
+
+    def test_no_retries_report_zero(self) -> None:
+        metrics = compute_metrics(TWO_BY_TWO)
+        assert metrics.destination_retries == 0
+        assert metrics.retry_latency_total_ms == 0.0
+        assert metrics.retry_latency_mean_ms == 0.0
 
     def test_no_predictions_means_undefined_precision(self) -> None:
         metrics = compute_metrics(
