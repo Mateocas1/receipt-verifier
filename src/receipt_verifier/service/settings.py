@@ -148,7 +148,7 @@ class Settings:
             ocr_tessdata=Path(tessdata) if tessdata else None,
             enable_llm=flag("RECEIPT_VERIFIER_ENABLE_LLM", True),
             enable_ocr=flag("RECEIPT_VERIFIER_ENABLE_OCR", True),
-            destination_retry=flag("RECEIPT_VERIFIER_DESTINATION_RETRY", True),
+            destination_retry=flag("RECEIPT_VERIFIER_DESTINATION_RETRY", False),
         )
 
     def build_extractor(self, *, limiter: RequestLimiter | None = None) -> ReceiptExtractor:

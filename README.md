@@ -265,7 +265,7 @@ curl -s -X POST localhost:8000/v1/receipts \
 | `EXTRACTOR_TIMEOUT_SECONDS` | `20` | per-stage deadline (thread-based) |
 | `BREAKER_FAILURE_THRESHOLD` / `BREAKER_OPEN_SECONDS` | `3` / `30` | circuit breaker per stage |
 | `RECEIPT_VERIFIER_ENABLE_LLM` / `_ENABLE_OCR` | `true` | drop a stage without removing credentials |
-| `RECEIPT_VERIFIER_DESTINATION_RETRY` | `true` | give each vision stage one focused destination re-ask (see [Destination check and retry](#destination-check-and-retry)); needs a configured allowlist and is inert without one |
+| `RECEIPT_VERIFIER_DESTINATION_RETRY` | `false` | opt-in: give each vision stage one focused destination re-ask (one measured recovery in 150, +6.6% tokens, and it can turn a review into a reject; off until the adoption decision moves next to the ledger expectation) (see [Destination check and retry](#destination-check-and-retry)); needs a configured allowlist and is inert without one |
 
 ### Docker
 

@@ -360,7 +360,7 @@ class TestSettings:
         assert settings.max_image_bytes == 8 * 1024 * 1024
         assert not settings.llm.configured
         assert settings.llm.max_tokens == DEFAULT_LLM_MAX_TOKENS
-        assert settings.destination_retry is True
+        assert settings.destination_retry is False
 
     def test_env_never_prints_the_api_key(self) -> None:
         settings = Settings.from_env({"LLM_API_KEY": "secret-key"})
@@ -391,13 +391,14 @@ class TestSettings:
         transports = [engine.transport for engine in engines]
         assert [transport.limiter for transport in transports] == [limiter, limiter]
 
-    def test_a_vision_stage_gets_the_focused_destination_retry(self) -> None:
+    def test_a_vision_stage_gets_the_focused_destination_retry_when_enabled(self) -> None:
         settings = Settings.from_env(
             {
                 "LLM_API_KEY": "k",
                 "VISION_MODEL_PRIMARY": "vision-1",
                 "RECEIPT_VERIFIER_ALLOWED_DESTINATIONS": "alias:camila.gomez.ar",
                 "RECEIPT_VERIFIER_ENABLE_OCR": "false",
+                "RECEIPT_VERIFIER_DESTINATION_RETRY": "true",
             }
         )
         cascade = settings.build_extractor()
@@ -406,14 +407,13 @@ class TestSettings:
         assert stage.can_retry
         assert stage.inner.name == "llm-primary"
 
-    def test_the_retry_can_be_disabled_from_the_environment(self) -> None:
+    def test_the_retry_is_off_by_default(self) -> None:
         settings = Settings.from_env(
             {
                 "LLM_API_KEY": "k",
                 "VISION_MODEL_PRIMARY": "vision-1",
                 "RECEIPT_VERIFIER_ALLOWED_DESTINATIONS": "alias:camila.gomez.ar",
                 "RECEIPT_VERIFIER_ENABLE_OCR": "false",
-                "RECEIPT_VERIFIER_DESTINATION_RETRY": "false",
             }
         )
         stage = settings.build_extractor().stages[0].inner
