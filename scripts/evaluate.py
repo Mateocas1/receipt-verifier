@@ -15,6 +15,8 @@ minute) because the provider window budget is shared.
 from __future__ import annotations
 
 import argparse
+import sys
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Final
@@ -78,6 +80,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "is recorded as an empty reading so a live run survives provider hiccups"
         ),
     )
+    parser.add_argument(
+        "--progress-every",
+        type=int,
+        default=25,
+        help="report progress every N samples on stderr; 0 disables it",
+    )
     args = parser.parse_args(argv)
     args.tolerate_errors = not args.strict_errors
     return args
@@ -128,13 +136,26 @@ def build_extractor(args: argparse.Namespace) -> tuple[ReceiptExtractor, float]:
         raise SystemExit(f"no extractor is configured: {exc}") from exc
 
 
+def progress(args: argparse.Namespace) -> Callable[[int, int], None] | None:
+    """A stderr progress reporter for long live runs (``--progress-every 0`` disables)."""
+    every = int(args.progress_every)
+    if every <= 0:
+        return None
+
+    def report(done: int, total: int) -> None:
+        if done % every == 0 or done == total:
+            print(f"  {done}/{total} samples", file=sys.stderr, flush=True)
+
+    return report
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     dataset = load_dataset(args.dataset)
     extractor, noise = build_extractor(args)
     now = datetime.fromisoformat(args.now).astimezone(AR_TZ) if args.now else None
 
-    report = run_evaluation(dataset, extractor, now=now, noise=noise)
+    report = run_evaluation(dataset, extractor, now=now, noise=noise, on_sample=progress(args))
     print(render_table(report))
     if isinstance(extractor, ResilientExtractor) and extractor.failures:
         print(f"\nextractor errors: {extractor.failures} sample(s) ({extractor.last_error})")
