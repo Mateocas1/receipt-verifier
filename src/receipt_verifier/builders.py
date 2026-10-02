@@ -16,6 +16,9 @@ def build_extraction(
     raw_text: str = "",
     latency_ms: float = 0.0,
     cost_usd: Decimal = Decimal("0"),
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    error: str = "",
 ) -> ExtractionResult:
     """Build an :class:`ExtractionResult` from raw values.
 
@@ -23,7 +26,8 @@ def build_extraction(
     ``datetime``, a :class:`~receipt_verifier.schema.Destination`, an ``Issuer`` or a
     ``str``); Pydantic coerces them to the declared field type. Missing keys become
     ``None`` with ``0.0`` confidence. Per-field ``confidences`` default to ``1.0`` for
-    present values and ``0.0`` for absent ones.
+    present values and ``0.0`` for absent ones. ``prompt_tokens``/``completion_tokens``
+    are the provider usage this reading cost, when the extractor knows it.
     """
     explicit = confidences or {}
     payload: dict[str, object] = {
@@ -31,6 +35,9 @@ def build_extraction(
         "raw_text": raw_text,
         "latency_ms": latency_ms,
         "cost_usd": cost_usd,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "error": error,
     }
     for name in FIELD_NAMES:
         raw = values.get(name)

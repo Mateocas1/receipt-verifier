@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 
+import httpx
 import pytest
 
 from receipt_verifier.extractors.llm import (
@@ -13,6 +14,7 @@ from receipt_verifier.extractors.llm import (
     LlmCompletion,
     LlmConfig,
     LlmPrices,
+    LlmRateLimitError,
     LlmResponseError,
     LlmTransportError,
     VisionLlmExtractor,
@@ -192,6 +194,18 @@ class TestExtraction:
         result = engine.extract(IMAGE)
         assert result.cost_usd == Decimal("0.013")  # 1000 in @0.01 + 100 out @0.03
 
+    def test_token_usage_is_carried_on_the_result(self) -> None:
+        engine, _ = extractor(json.dumps(PAYLOAD))
+        result = engine.extract(IMAGE)
+        assert result.prompt_tokens == 1000
+        assert result.completion_tokens == 100
+
+    def test_token_usage_accumulates_across_retries(self) -> None:
+        engine, _ = extractor("not json", json.dumps(PAYLOAD))
+        result = engine.extract(IMAGE)
+        assert result.prompt_tokens == 2000
+        assert result.completion_tokens == 200
+
     def test_default_pricing_reports_zero(self) -> None:
         engine, _ = extractor(json.dumps(PAYLOAD))
         assert engine.extract(IMAGE).cost_usd == 0
@@ -244,3 +258,194 @@ class TestHttpTransport:
                 media_type="image/png",
                 timeout_seconds=1.0,
             )
+
+
+class RateLimitedResponse:
+    """Minimal httpx.Response stand-in for the rate-limit paths."""
+
+    def __init__(
+        self,
+        status_code: int,
+        *,
+        body: dict[str, object] | None = None,
+        headers: dict[str, str] | None = None,
+        text: str | None = None,
+    ) -> None:
+        self.status_code = status_code
+        self.headers = headers or {}
+        self._body = body or {}
+        self.text = text if text is not None else json.dumps(self._body)
+
+    def json(self) -> dict[str, object]:
+        return self._body
+
+    def raise_for_status(self) -> None:
+        if self.status_code < 400:
+            return
+        request = httpx.Request("POST", "https://example.test/v1/chat/completions")
+        response = httpx.Response(self.status_code, request=request, text=self.text)
+        raise httpx.HTTPStatusError("boom", request=request, response=response)
+
+
+class ScriptedHttpClient:
+    """Returns queued responses (or raises queued exceptions), counting calls."""
+
+    def __init__(self, *results: RateLimitedResponse | Exception) -> None:
+        self.results = list(results)
+        self.calls = 0
+
+    def post(self, *args: object, **kwargs: object) -> RateLimitedResponse:
+        self.calls += 1
+        result = self.results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+class CountingLimiter:
+    def __init__(self, wait: float = 0.0) -> None:
+        self.acquires = 0
+        self.wait = wait
+
+    def acquire(self) -> None:
+        self.acquires += 1
+
+    def seconds_until_slot(self) -> float:
+        return self.wait
+
+
+def ok_body() -> dict[str, object]:
+    return {
+        "choices": [{"message": {"content": json.dumps(PAYLOAD)}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+    }
+
+
+def call_transport(transport: HttpLlmTransport) -> LlmCompletion:
+    return transport.complete(
+        model="m",
+        system="s",
+        prompt="p",
+        image_base64="",
+        media_type="image/png",
+        timeout_seconds=1.0,
+    )
+
+
+class TestHttpTransportRateLimits:
+    def test_429_with_retry_after_is_waited_out_then_succeeds(self) -> None:
+        client = ScriptedHttpClient(
+            RateLimitedResponse(429, headers={"Retry-After": "2"}),
+            RateLimitedResponse(200, body=ok_body()),
+        )
+        slept: list[float] = []
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client, sleep=slept.append)
+        completion = call_transport(transport)
+        assert completion.text == json.dumps(PAYLOAD)
+        assert client.calls == 2
+        assert slept == [2.0]
+        assert transport.rate_limit_waits_seconds() == 2.0
+
+    def test_429_without_header_falls_back_to_the_limiter(self) -> None:
+        client = ScriptedHttpClient(
+            RateLimitedResponse(429),
+            RateLimitedResponse(200, body=ok_body()),
+        )
+        slept: list[float] = []
+        pacing = CountingLimiter(wait=3.0)
+        transport = HttpLlmTransport(
+            LlmConfig(api_key="k"), client=client, limiter=pacing, sleep=slept.append
+        )
+        call_transport(transport)
+        assert slept == [3.0]
+        assert pacing.acquires == 2
+
+    def test_persistent_429_finally_raises_a_rate_limit_error(self) -> None:
+        client = ScriptedHttpClient(
+            RateLimitedResponse(429, headers={"Retry-After": "1"}),
+            RateLimitedResponse(429, headers={"Retry-After": "1"}),
+            RateLimitedResponse(429, headers={"Retry-After": "1"}),
+        )
+        slept: list[float] = []
+        transport = HttpLlmTransport(
+            LlmConfig(api_key="k"), client=client, max_rate_limit_retries=2, sleep=slept.append
+        )
+        with pytest.raises(LlmRateLimitError):
+            call_transport(transport)
+        assert client.calls == 3
+        assert slept == [1.0, 1.0]
+
+    def test_server_error_is_still_a_transport_error(self) -> None:
+        client = ScriptedHttpClient(RateLimitedResponse(500))
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client)
+        with pytest.raises(LlmTransportError):
+            call_transport(transport)
+
+    def test_provider_error_body_is_reported(self) -> None:
+        body = '{"error": {"message": "response_format requires the word JSON in the prompt"}}'
+        client = ScriptedHttpClient(RateLimitedResponse(400, text=body))
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client)
+        with pytest.raises(LlmTransportError, match="requires the word JSON"):
+            call_transport(transport)
+
+    def test_reasoning_only_answer_is_used(self) -> None:
+        body: dict[str, object] = {
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "reasoning_content": json.dumps(PAYLOAD),
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 7, "completion_tokens": 3},
+        }
+        client = ScriptedHttpClient(RateLimitedResponse(200, body=body))
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client)
+        completion = call_transport(transport)
+        assert json.loads(completion.text)["operation_id"] == PAYLOAD["operation_id"]
+        assert completion.completion_tokens == 3
+
+    def test_blank_content_falls_back_to_reasoning(self) -> None:
+        body: dict[str, object] = {
+            "choices": [{"message": {"content": "   ", "reasoning_content": "25000"}}]
+        }
+        client = ScriptedHttpClient(RateLimitedResponse(200, body=body))
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client)
+        assert call_transport(transport).text == "25000"
+
+    def test_bad_gateway_is_retried_with_backoff(self) -> None:
+        client = ScriptedHttpClient(
+            RateLimitedResponse(502, text="<html>502 Bad gateway</html>"),
+            RateLimitedResponse(200, body=ok_body()),
+        )
+        slept: list[float] = []
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client, sleep=slept.append)
+        assert call_transport(transport).text
+        assert client.calls == 2
+        assert slept == [1.0]
+        assert transport.transient_waits_seconds() == 1.0
+
+    def test_persistent_bad_gateway_finally_fails(self) -> None:
+        client = ScriptedHttpClient(
+            RateLimitedResponse(503, text="overloaded"),
+            RateLimitedResponse(503, text="overloaded"),
+            RateLimitedResponse(503, text="overloaded"),
+        )
+        slept: list[float] = []
+        transport = HttpLlmTransport(
+            LlmConfig(api_key="k"), client=client, max_transient_retries=2, sleep=slept.append
+        )
+        with pytest.raises(LlmTransportError, match="HTTP 503: overloaded"):
+            call_transport(transport)
+        assert client.calls == 3
+        assert slept == [1.0, 2.0]
+
+    def test_client_error_is_not_retried(self) -> None:
+        client = ScriptedHttpClient(RateLimitedResponse(400, text="bad request"))
+        slept: list[float] = []
+        transport = HttpLlmTransport(LlmConfig(api_key="k"), client=client, sleep=slept.append)
+        with pytest.raises(LlmTransportError):
+            call_transport(transport)
+        assert client.calls == 1
+        assert slept == []

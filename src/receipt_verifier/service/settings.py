@@ -23,6 +23,7 @@ from receipt_verifier.extraction import ReceiptExtractor
 from receipt_verifier.extractors.cascade import CascadeExtractor
 from receipt_verifier.extractors.llm import (
     DEFAULT_BASE_URL,
+    LLM_EXTRACTOR_NAME,
     HttpLlmTransport,
     LlmConfig,
     LlmPrices,
@@ -35,10 +36,13 @@ from receipt_verifier.extractors.ocr import (
     TesserocrEngine,
     discover_tessdata,
 )
+from receipt_verifier.ratelimit import RequestLimiter
 from receipt_verifier.validate import ValidationPolicy
 
 DEFAULT_MAX_IMAGE_BYTES = 8 * 1024 * 1024
 DEFAULT_EXTRACTOR_TIMEOUT_SECONDS = 20.0
+DEFAULT_LLM_MAX_TOKENS = 900
+"""Conservative per-answer cap for the service; evaluations raise it via LLM_MAX_TOKENS."""
 
 
 class NoExtractorConfigured(RuntimeError):
@@ -118,6 +122,7 @@ class Settings:
             primary_model=text("VISION_MODEL_PRIMARY"),
             secondary_model=text("VISION_MODEL_SECONDARY"),
             timeout_seconds=number("LLM_TIMEOUT_SECONDS", 30.0),
+            max_tokens=count("LLM_MAX_TOKENS", DEFAULT_LLM_MAX_TOKENS),
             prices=LlmPrices(
                 input_per_1k=_decimal(source.get("LLM_INPUT_PRICE_PER_1K", "")),
                 output_per_1k=_decimal(source.get("LLM_OUTPUT_PRICE_PER_1K", "")),
@@ -142,8 +147,13 @@ class Settings:
             enable_ocr=flag("RECEIPT_VERIFIER_ENABLE_OCR", True),
         )
 
-    def build_extractor(self) -> ReceiptExtractor:
-        """Assemble the cascade from the configured stages, skipping unusable ones."""
+    def build_extractor(self, *, limiter: RequestLimiter | None = None) -> ReceiptExtractor:
+        """Assemble the cascade from the configured stages, skipping unusable ones.
+
+        ``limiter`` is the client-side pacing guard shared by every LLM stage; the
+        service leaves it unset, while the evaluation passes a rolling-window limiter so
+        a run never bursts the provider key it shares with other agents.
+        """
         stages: list[GuardedExtractor] = []
         if self.enable_llm and self.llm.api_key:
             if self.llm.primary_model:
@@ -151,7 +161,7 @@ class Settings:
                     self._guard(
                         VisionLlmExtractor(
                             model=self.llm.primary_model,
-                            transport=HttpLlmTransport(self.llm),
+                            transport=HttpLlmTransport(self.llm, limiter=limiter),
                             timeout_seconds=self.llm.timeout_seconds,
                             prices=self.llm.prices,
                             name="llm-primary",
@@ -163,7 +173,7 @@ class Settings:
                     self._guard(
                         VisionLlmExtractor(
                             model=self.llm.secondary_model,
-                            transport=HttpLlmTransport(self.llm),
+                            transport=HttpLlmTransport(self.llm, limiter=limiter),
                             timeout_seconds=self.llm.timeout_seconds,
                             prices=self.llm.prices,
                             name="llm-secondary",
@@ -181,6 +191,24 @@ class Settings:
                 "or install the OCR extra with Tesseract language data"
             )
         return CascadeExtractor(stages, policy=self.policy)
+
+    def build_vision_model(
+        self, model: str, *, limiter: RequestLimiter | None = None, name: str | None = None
+    ) -> VisionLlmExtractor:
+        """One vision model, unguarded: an evaluation must attempt every receipt.
+
+        A circuit breaker belongs to the request path, where skipping a failing stage is
+        how the service survives an outage. In an evaluation it would silently turn the
+        model's own failures into missing measurements, so the harness reaches the
+        provider on every sample and reports what happened.
+        """
+        return VisionLlmExtractor(
+            model=model,
+            transport=HttpLlmTransport(self.llm, limiter=limiter),
+            timeout_seconds=self.llm.timeout_seconds,
+            prices=self.llm.prices,
+            name=name or f"{LLM_EXTRACTOR_NAME}-{model}",
+        )
 
     def _build_ocr(self) -> OcrExtractor:
         return OcrExtractor(
@@ -214,6 +242,7 @@ def _decimal(raw: str) -> Decimal:
 
 __all__ = [
     "DEFAULT_EXTRACTOR_TIMEOUT_SECONDS",
+    "DEFAULT_LLM_MAX_TOKENS",
     "DEFAULT_MAX_IMAGE_BYTES",
     "NoExtractorConfigured",
     "Settings",

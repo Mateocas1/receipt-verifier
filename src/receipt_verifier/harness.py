@@ -6,6 +6,7 @@ allowlist, so extractors stay pure functions of the image bytes.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from time import perf_counter
@@ -47,15 +48,21 @@ def run_evaluation(
     now: datetime | None = None,
     policy: ValidationPolicy | None = None,
     noise: float = 0.0,
+    on_sample: Callable[[int, int], None] | None = None,
 ) -> EvaluationReport:
-    """Extract, validate and score every label of a dataset, in dataset order."""
+    """Extract, validate and score every label of a dataset, in dataset order.
+
+    ``on_sample`` receives ``(done, total)`` after each sample; a live run against a real
+    provider takes long enough that silence is indistinguishable from a hang.
+    """
     active_policy = policy or ValidationPolicy()
     validator = ReceiptValidator(dataset.allowed_destinations, active_policy)
     evaluation_at = now or dataset.evaluation_at
     seen_operation_ids: set[str] = set()
     outcomes: list[SampleOutcome] = []
+    total = len(dataset.labels)
 
-    for label in dataset.labels:
+    for index, label in enumerate(dataset.labels, start=1):
         image = dataset.image_bytes(label)
         started = perf_counter()
         extraction = extractor.extract(image)
@@ -81,6 +88,8 @@ def run_evaluation(
                 min_confidence=active_policy.min_field_confidence,
             )
         )
+        if on_sample is not None:
+            on_sample(index, total)
 
     frozen = tuple(outcomes)
     return EvaluationReport(
@@ -148,6 +157,10 @@ def render_table(report: EvaluationReport) -> str:
         ("latency p95 ms", f"{metrics.latency_p95_ms:.2f}"),
         ("total cost usd", f"{metrics.total_cost_usd:.6f}"),
         ("mean cost usd", f"{metrics.mean_cost_usd:.6f}"),
+        ("prompt tokens", str(metrics.prompt_tokens)),
+        ("completion tokens", str(metrics.completion_tokens)),
+        ("total tokens", str(metrics.prompt_tokens + metrics.completion_tokens)),
+        ("extractor errors", str(metrics.extractor_errors)),
     ]
     lines.append("")
     for name, value in rows:

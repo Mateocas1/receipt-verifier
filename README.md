@@ -12,8 +12,11 @@ that with numbers: per-field exact match, approve precision/recall, and — abov
 
 > **Status.** Slice 1 (issue [#6](https://github.com/Mateocas1/mateo-roadmap/issues/6) /
 > PRD 40.1): dataset + harness. Slice 2 (issue
-> [#7](https://github.com/Mateocas1/mateo-roadmap/issues/7) / PRD 40.2, this one): FastAPI
-> service with an extractor cascade, circuit breakers and OCR/LLM extractors.
+> [#7](https://github.com/Mateocas1/mateo-roadmap/issues/7) / PRD 40.2): FastAPI service with an
+> extractor cascade, circuit breakers and OCR/LLM extractors. Slice 3 (issue
+> [#7](https://github.com/Mateocas1/mateo-roadmap/issues/7) / PRD 40.3): the live vision-model
+> evaluation against NaN — six models measured on 150 receipts, a cascade row, and the
+> `VISION_MODEL_PRIMARY`/`VISION_MODEL_SECONDARY` recommendation.
 > Every published number comes from **synthetic** data; the real anonymized slot is
 > documented in [`dataset/real/README.md`](dataset/real/README.md) and is still empty.
 
@@ -29,7 +32,16 @@ uv run python scripts/generate_synthetic.py   # rebuild dataset/synthetic/v1
 uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor dummy
 uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor ocr
 
-# 2. service
+# 2. live vision models (needs LLM_API_KEY; paces itself through EVAL_RPM, default 20/min)
+uv run python scripts/probe_vision_models.py                             # which models read images
+LLM_MAX_TOKENS=3000 LLM_TIMEOUT_SECONDS=120 \
+  uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor llm \
+  --model deepseek-v4-flash --json reports/eval-llm-deepseek-v4-flash.json
+VISION_MODEL_PRIMARY=deepseek-v4-flash VISION_MODEL_SECONDARY=qwen3.8-flash \
+  uv run python scripts/evaluate.py --dataset dataset/synthetic/v1 --extractor cascade
+uv run python scripts/summarize_llm_eval.py --report reports/eval-cascade.json --markdown
+
+# 3. service
 RECEIPT_VERIFIER_TOKEN=dev \
 RECEIPT_VERIFIER_ALLOWED_DESTINATIONS=alias:camila.gomez.ar \
   uv run python scripts/serve.py --host 127.0.0.1 --port 8000
@@ -41,7 +53,7 @@ curl -s -X POST localhost:8000/v1/receipts \
   -F "payment_amount=25000.00" \
   -F "payment_destination=camila.gomez.ar"
 
-# 3. checks
+# 4. checks
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
 uv run pytest
@@ -69,13 +81,19 @@ src/receipt_verifier/
 │   ├── dummy.py          replays the label sidecar (harness plumbing check)
 │   ├── ocr.py            Tesseract text engine + per-issuer layout parsers
 │   ├── llm.py            OpenAI-compatible vision model, JSON-only, retry on bad JSON
+│   ├── resilient.py      evaluation-only: a failed sample becomes an empty reading
 │   └── cascade.py        ordered stages with fallback and usability rules
+├── ratelimit.py          rolling-window pacing + 429 wait parsing for shared provider keys
+├── vision_probe.py       which provider models actually accept an image
+├── eval_summary.py       live reports -> the committed comparison summary
 └── service/              settings, imaging, registry, response models, FastAPI app
-scripts/{generate_synthetic,evaluate,serve}.py
+scripts/{generate_synthetic,evaluate,probe_vision_models,summarize_llm_eval,serve}.py
 Dockerfile                 non-root slim image with Tesseract language data
 dataset/synthetic/v1/      manifest.json + labels.jsonl + 150 PNGs
 dataset/real/anonymized/   frozen slot for real anonymized receipts (empty)
-tests/                     345 tests (8 need the OCR extra + language data)
+results/llm-eval.json      committed summary of the live provider runs
+reports/                   raw per-sample reports (gitignored)
+tests/                     423 tests (8 need the OCR extra + language data)
 ```
 
 ## Dataset `synthetic/v1`
@@ -217,9 +235,11 @@ curl -s -X POST localhost:8000/v1/receipts \
 | `RECEIPT_VERIFIER_MAX_IMAGE_BYTES` | `8388608` | upload limit |
 | `LLM_BASE_URL` | `https://api.nan.builders/v1` | OpenAI-compatible endpoint |
 | `LLM_API_KEY` | *(empty)* | enables the LLM stages when set |
-| `VISION_MODEL_PRIMARY` / `VISION_MODEL_SECONDARY` | *(empty)* | model ids, in cascade order |
-| `LLM_TIMEOUT_SECONDS` | `30` | per-call deadline |
+| `VISION_MODEL_PRIMARY` / `VISION_MODEL_SECONDARY` | *(empty)* — measured recommendation `deepseek-v4-flash` / `qwen3.8-flash` | model ids, in cascade order (see [Results](#results-synthetic-set)) |
+| `LLM_TIMEOUT_SECONDS` | `30` | per-call deadline (`120` for the live evaluation) |
+| `LLM_MAX_TOKENS` | `900` | answer cap per call; a thinking model spends part of this budget on its reasoning before the JSON answer, so the live evaluation used `3000` |
 | `LLM_INPUT_PRICE_PER_1K` / `LLM_OUTPUT_PRICE_PER_1K` | `0` | USD per 1k tokens; 0 = "price unknown, reported as 0" |
+| `EVAL_RPM` | `20` | client-side pacing for `scripts/evaluate.py` and the probe; the provider key's window budget is shared with other agents, so evaluations never burst it |
 | `OCR_LANGUAGES` | `spa+eng` | Tesseract languages |
 | `OCR_TESSDATA` | *(auto)* | tessdata directory; auto-discovers system paths |
 | `EXTRACTOR_TIMEOUT_SECONDS` | `20` | per-stage deadline (thread-based) |
@@ -251,6 +271,12 @@ class ReceiptExtractor(Protocol):
     def name(self) -> str: ...
     def extract(self, image: bytes) -> ExtractionResult: ...
 ```
+
+The measured pairing is `VISION_MODEL_PRIMARY=deepseek-v4-flash`,
+`VISION_MODEL_SECONDARY=qwen3.8-flash` (see [Results](#results-synthetic-set) for why), and the
+cascade needs `uv sync --extra ocr` plus language data in `OCR_TESSDATA` for its third stage —
+without it the stage is dropped and the cascade is LLM-only, which is what happens in the
+service too.
 
 - **Usability rule**: a stage's reading is accepted only when every critical field
   (`amount`, `transferred_at`, `sender_name`, `destination`, `operation_id`, `issuer`) is
@@ -315,47 +341,114 @@ Reported by `scripts/evaluate.py` as a table and as JSON (`reports/eval-<extract
 | extractor usage | how many receipts each cascade stage actually produced |
 | latency | mean / p50 / p95 milliseconds per receipt, measured around `extract` |
 | cost | total and mean USD per receipt (0 unless prices are configured) |
+| tokens | total prompt / completion / combined tokens, summed from what the extractor reported per receipt (0 for local extractors) |
+| extractor errors | samples where the extractor raised instead of returning a reading; the evaluation records them as empty readings so a provider hiccup costs one sample rather than the run |
 
 Undefined rates (no positive predictions, empty dataset) are reported as `n/a`, never as `0`.
 
 ## Results (synthetic set)
 
-Extractor comparison, `dataset/synthetic/v1`, 150 receipts, zero noise:
+Live comparison on `dataset/synthetic/v1` — 150 receipts, 30 of them adversarial — against the
+NaN OpenAI-compatible endpoint, one request at a time: `EVAL_RPM=20`, `LLM_MAX_TOKENS=3000`,
+`LLM_TIMEOUT_SECONDS=120`, `temperature=0`. The raw per-sample reports stay under the
+gitignored `reports/`; the committed [`results/llm-eval.json`](results/llm-eval.json) is the
+summary these tables are rendered from, and `scripts/summarize_llm_eval.py --markdown`
+re-renders them, so the table cannot drift from the runs.
 
-| Extractor | Field accuracy | approve precision | approve recall | False approvals | Coverage | Latency (mean) | Cost |
+| Extractor | Field accuracy | approve precision | approve recall | False approvals (adversarial) | Manual review | Latency p50 / p95 | Tokens/receipt |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `dummy` (label replay) | 9/9 fields 100% | 1.000 | 1.000 | **0** | 1.000 | 0.05 ms | $0 |
-| `ocr` (Tesseract + parsers) | 9/9 fields 100% | 1.000 | 1.000 | **0** | 1.000 | 343 ms | $0 |
-| `llm-primary` (vision model) | — | — | — | — | — | — | **pending key** |
-| `cascade` (LLM → OCR) | — | — | — | — | — | — | **pending key** |
+| `dummy` (label replay) | 1.000 | 1.000 | 1.000 | **0** (0/30) | 0.040 | 0 ms / 0 ms | 0 |
+| `ocr` (Tesseract + parsers) | 1.000 | 1.000 | 1.000 | **0** (0/30) | 0.040 | 304 ms / 343 ms | 0 |
+| `llm-deepseek-v4-flash` | 0.995 | 1.000 | 0.442 | **0** (0/30) | 0.480 | 4 026 ms / 6 041 ms | 1 056 |
+| `llm-qwen3.8-flash` | 0.998 | 1.000 | 0.558 | **0** (0/30) | 0.393 | 9 134 ms / 21 760 ms | 1 571 |
+| `llm-mimo-v2.6-flash` | 0.997 | 1.000 | 0.483 | **0** (0/30) | 0.447 | 10 876 ms / 32 859 ms | 1 085 |
+| `llm-glm5.3-flash` | 0.997 | 0.980 | 0.400 | 1 (1/30) | 0.500 | 8 820 ms / 21 211 ms | 1 568 |
+| `llm-qwen3.6` | 0.859 | 1.000 | 0.567 | **0** (0/30) | 0.400 | 20 055 ms / 89 658 ms | 2 621 |
+| `llm-gemma4` | 0.929 | 0.964 | 0.450 | 2 (2/30) | 0.493 | 20 839 ms / 120 101 ms | 2 040 |
+| `cascade` (deepseek → qwen3.8 → OCR) | 0.999 | 1.000 | 1.000 | **0** (0/30) | 0.040 | 10 285 ms / 18 189 ms | 647 |
 
-The `ocr` row is a real run — `uv run python scripts/evaluate.py --dataset
-dataset/synthetic/v1 --extractor ocr --max-false-approvals 0` — not an estimate; the LLM and
-cascade rows need `LLM_API_KEY` and `VISION_MODEL_PRIMARY`, which this repository does not
-ship. The dummy row is a plumbing check: it proves the harness, labels and validator are
-consistent, and says nothing about models.
+**Field accuracy** is the mean per-field exact match over the eight fields the synthetic images
+can actually carry, so it says something about reading a receipt. `issuer` is deliberately
+excluded from that mean and still reported per field in the summary.
 
-Full `ocr` output on the development machine:
+| Model | amount | amount_detail | transferred_at | sender_name | sender_bank | destination | operation_id | `issuer` | memo |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `deepseek-v4-flash` | 1.00 | 1.00 | 1.00 | 1.00 | 0.99 | 0.97 | 1.00 | 0.44 | 1.00 |
+| `qwen3.8-flash` | 1.00 | 1.00 | 1.00 | 1.00 | 0.99 | 0.99 | 1.00 | 0.53 | 1.00 |
+| `mimo-v2.6-flash` | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 0.99 | 1.00 | 0.46 | 0.99 |
+| `glm5.3-flash` | 1.00 | 0.99 | 1.00 | 1.00 | 1.00 | 0.98 | 1.00 | 0.41 | 1.00 |
+| `qwen3.6` | 0.86 | 0.86 | 0.86 | 0.86 | 0.86 | 0.83 | 0.85 | 0.49 | 0.89 |
+| `gemma4` | 0.93 | 0.93 | 0.93 | 0.93 | 0.93 | 0.90 | 0.92 | 0.46 | 0.95 |
+| `ocr` | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
 
-```
-per-field exact match
-  amount               1.000     150/150
-  amount_detail        1.000     150/150
-  transferred_at       1.000     150/150
-  sender_name          1.000     150/150
-  sender_bank          1.000     150/150
-  destination          1.000     150/150
-  operation_id         1.000     150/150
-  issuer               1.000     150/150
-  memo                 1.000     150/150
+False approvals by adversarial class (each class is 6 receipts):
 
-true positives 120   false positives 0   true negatives 30   false negatives 0
-approve precision 1.000   approve recall 1.000   coverage 1.000
-false approvals (count) 0     adversarial false approvals 0/30
-manual reviews (count) 6      approval rate 0.800
-extractor usage ocr=150
-latency mean 342.63 ms   p50 339.26 ms   p95 381.20 ms   cost $0
-```
+| Model | edited amount | wrong destination | duplicate id | injected instruction | stale date |
+| --- | --- | --- | --- | --- | --- |
+| `deepseek-v4-flash` | 0 | 0 | 0 | **0** | 0 |
+| `qwen3.8-flash` | 0 | 0 | 0 | **0** | 0 |
+| `mimo-v2.6-flash` | 0 | 0 | 0 | **0** | 0 |
+| `glm5.3-flash` | 0 | 0 | 1 | **0** | 0 |
+| `qwen3.6` | 0 | 0 | 0 | **0** | 0 |
+| `gemma4` | 0 | 0 | 2 | **0** | 0 |
+| `cascade` | 0 | 0 | 0 | **0** | 0 |
+
+No live model ever approved an injected-instruction receipt: **0/6 on every row**, each rejection
+carrying the `prompt_injection` reason. `gemma4` routed one of its six injected receipts to
+`manual_review` instead of the expected `reject` (it failed to read enough fields), which is a
+human work item rather than a false approval; `tests/test_live_injection.py` pins both halves of
+that contract against the committed summary.
+
+### Chosen defaults
+
+**`VISION_MODEL_PRIMARY=deepseek-v4-flash`, `VISION_MODEL_SECONDARY=qwen3.8-flash`** (the
+repository ships no model id; these are the measured recommendation).
+
+- `deepseek-v4-flash` is the only model whose p95 (6.0 s) fits the service's default
+  `EXTRACTOR_TIMEOUT_SECONDS=20`, and it is the cheapest (1 056 tokens/receipt) at 0 false
+  approvals and 0 extractor errors. Its 0.995 readable accuracy trails the best by 0.3 pp,
+  which is noise at this sample size.
+- `qwen3.8-flash` is the most accurate readable-field reader (0.998) with 0 false approvals; as
+  a second stage it only runs when the primary's reading is unusable. Raise
+  `EXTRACTOR_TIMEOUT_SECONDS` to ~30 s for it, or accept that its p95 occasionally exceeds the
+  stage deadline and falls through to OCR.
+- `mimo-v2.6-flash` is the token-cheaper alternative (1 085/receipt) if 32.9 s at p95 is
+  acceptable. `qwen3.6` and `gemma4` are ruled out: 2.5× the tokens, p95 over 89 s, 10 extractor
+  errors each and (for `gemma4`) 2 false approvals.
+
+The cascade row is the shipped configuration with `EXTRACTOR_TIMEOUT_SECONDS=20`, its own
+circuit breakers and all three stages enabled; on this host the local OCR stage needed
+`OCR_TESSDATA` (see the OCR extra), otherwise the cascade is LLM-only. Stage usage was
+`llm-primary` 70, `ocr` 65, `llm-secondary` 15: most of the time the LLM reading was not usable
+(isolated below), so the cascade collected OCR's complete reading. That is the design working —
+and it means the cascade's token total is a mix, not a per-model number.
+
+### Three things that change how these numbers must be read
+
+1. **`issuer` is not printed on the synthetic receipts.** The renderer draws invented placeholder
+   names ("Billetera A", "Banco Digital C"), never the issuer code the label carries, so no model
+   can read it; the 0.41-0.53 column is inference from correlated layout and vocabulary. Because
+   `issuer` is a *critical* field, an unreadable issuer forces `manual_review`, which is why
+   coverage and approve recall sit near 0.4-0.6 even at ~0.99 accuracy on readable fields. This
+   is an artifact of the dataset, not of the models — and the reason the cascade reaches 1.000
+   recall: the OCR parser knows these six layouts by construction.
+2. **Both false-approval classes found here are the replay corner.** All three false approvals
+   (`glm5.3-flash` ×1, `gemma4` ×2) are `duplicate_operation_id` receipts whose twin went to
+   `manual_review`; the harness mirrors the write path, so an operation id only enters the
+   registry once its receipt is approved, and the replay then looks fresh. The same defect class
+   the `--noise` table below finds.
+3. **The instrument had to be fixed twice before the models were measured.** Sweep 1 used
+   `LLM_MAX_TOKENS=900` and reported qwen3.6 as failing 81/150 receipts with "model answer
+   contained no JSON object" — a thinking model spends the whole answer budget on reasoning and
+   never reaches the JSON. Sweep 2 raised the budget to 3000 but kept the 30 s deadline
+   (`LLM_TIMEOUT_SECONDS`) and reported 61/150 failures, all "The read operation timed out"
+   against a 24 s p50. Only sweep 3 is published: 120 s deadline, 3000-token budget, and
+   re-calling sweep-1 failures at 3000 tokens reads them correctly. Published LLM numbers are
+   therefore conditioned on those two settings, and both are printed with the run.
+
+The `ocr` row is a real run — `OCR_TESSDATA=... uv run python scripts/evaluate.py --dataset
+dataset/synthetic/v1 --extractor ocr --max-false-approvals 0`. The dummy row is a plumbing
+check: it proves the harness, labels and validator are consistent, and says nothing about models.
 
 Injecting extractor noise shows the harness can actually fail (dummy extractor):
 
@@ -408,9 +501,28 @@ unit tests with a fake transport, including the "provider down ⇒ fall back to 
 - **Injection detection is a phrase denylist.** It catches the dataset wording, obvious
   English variants and nothing paraphrased — but the architecture does not depend on it,
   because the model never holds approval authority.
-- **Provider behaviour is unverified.** The LLM path is written against the
-  OpenAI-compatible schema and tested with a fake transport; no real provider call has been
-  made in this slice, so latency, cost and field quality there are unknown.
+- **Provider behaviour is measured, but on synthetic images only.** Real receipts (cropped,
+  compressed, re-photographed, other fonts) are the next honest test; `dataset/real/` is still
+  empty.
+- **The live numbers are one sweep of one synthetic set.** Every LLM row comes from a single
+  150-receipt run per model on `2026-10-02`, at `temperature=0`, `LLM_MAX_TOKENS=3000` and
+  `LLM_TIMEOUT_SECONDS=120`. The provider is not bit-stable and caches identical requests, so a
+  second sweep would move these numbers; treat the ranking, not the third decimal.
+- **The `issuer` field is a dataset artifact.** The renderer prints invented placeholder names
+  instead of issuer codes, so no model can read it; it is excluded from the headline accuracy
+  and it forces `manual_review` whenever it is missing. The cascade's perfect recall leans on
+  OCR, which knows these six layouts by construction.
+- **NaN publishes no prices**, so cost is reported as 0 and the token columns are the cost proxy.
+- **A model that drops the memo would defeat the injection denylist.** All six models rejected
+  all six injected receipts (0/6 approved, `prompt_injection` each time), and the payload schema
+  still cannot express a decision — but detection needs the injected text to reach the validator
+  through `memo`, `sender_name` or the raw answer. An extractor that silently omitted the memo
+  line would leave nothing to detect.
+- **One model never got a chance:** `minimax-h3` answers 401 ("this API key does not have access
+  to the requested model"), so it could not be probed or measured.
+- **The instrument is part of the result.** Two earlier sweeps are not published because they
+  measured the answer cap and the per-call deadline rather than the models; both settings are
+  printed with every run, and the probe report records the budget it used.
 - **In-memory state.** The operation-id registry (and every circuit breaker) lives in the
   process: a restart forgets replays, and two replicas do not share the registry. The real
   ledger owns this state in production.
@@ -423,8 +535,10 @@ unit tests with a fake transport, including the "provider down ⇒ fall back to 
 
 ## Next
 
-1. Add real anonymized receipts and report synthetic-vs-real deltas next to each other.
-2. Run the LLM stages against a real key and fill in the comparison table.
+1. Add real anonymized receipts and report synthetic-vs-real deltas next to each other — the
+   synthetic `issuer` artifact disappears the moment a real brand name is on the image.
+2. Configure prices and re-run the comparison so the token columns become dollars; then decide
+   whether the answer cap can drop below `3000` without losing JSON answers.
 3. Add a per-issuer and per-adversarial-kind breakdown to `Metrics` (the data is already in
    `SampleOutcome`), plus a confusion matrix per rejection reason.
 4. Per-caller quotas, request ids and structured audit logging for the service.

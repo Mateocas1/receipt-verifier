@@ -32,6 +32,9 @@ def outcome(
     failed_fields: tuple[str, ...] = (),
     latency_ms: float = 10.0,
     cost_usd: Decimal = Decimal("0"),
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    extractor_error: str = "",
 ) -> SampleOutcome:
     return SampleOutcome(
         sample_id=sample_id,
@@ -47,6 +50,9 @@ def outcome(
         covered=covered,
         latency_ms=latency_ms,
         cost_usd=cost_usd,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        extractor_error=extractor_error,
     )
 
 
@@ -132,6 +138,45 @@ class TestConfusionMetrics:
         metrics = compute_metrics(outcomes)
         assert metrics.total_cost_usd == Decimal("0.04")
         assert metrics.mean_cost_usd == Decimal("0.02")
+
+    def test_token_usage_is_summed(self) -> None:
+        outcomes = (
+            outcome(
+                "a",
+                expected=Decision.APPROVE,
+                predicted=Decision.APPROVE,
+                prompt_tokens=1_000,
+                completion_tokens=100,
+            ),
+            outcome(
+                "b",
+                expected=Decision.APPROVE,
+                predicted=Decision.APPROVE,
+                prompt_tokens=2_000,
+                completion_tokens=250,
+            ),
+        )
+        metrics = compute_metrics(outcomes)
+        assert metrics.prompt_tokens == 3_000
+        assert metrics.completion_tokens == 350
+
+    def test_token_usage_defaults_to_zero(self) -> None:
+        metrics = compute_metrics(TWO_BY_TWO)
+        assert metrics.prompt_tokens == 0
+        assert metrics.completion_tokens == 0
+
+    def test_extractor_errors_are_counted(self) -> None:
+        outcomes = (
+            outcome("a", expected=Decision.APPROVE, predicted=Decision.APPROVE),
+            outcome(
+                "b",
+                expected=Decision.APPROVE,
+                predicted=Decision.MANUAL_REVIEW,
+                extractor_error="LlmTransportError: HTTP 502",
+            ),
+        )
+        metrics = compute_metrics(outcomes)
+        assert metrics.extractor_errors == 1
 
     def test_per_field_accuracy(self) -> None:
         metrics = compute_metrics(TWO_BY_TWO)

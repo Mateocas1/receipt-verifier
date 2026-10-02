@@ -72,6 +72,9 @@ class SampleOutcome(BaseModel):
     covered: bool
     latency_ms: float
     cost_usd: Decimal
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    extractor_error: str = ""
 
     @property
     def copied_reasons(self) -> tuple[VerdictReason, ...]:
@@ -101,6 +104,10 @@ class Metrics(BaseModel):
     latency_p95_ms: float
     total_cost_usd: Decimal
     mean_cost_usd: Decimal
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    extractor_errors: int = 0
+    """Samples where the extractor failed instead of returning a reading."""
 
     @property
     def approve_precision(self) -> MetricValue:
@@ -236,6 +243,9 @@ def evaluate_sample(
         covered=is_covered(extraction, min_confidence=min_confidence),
         latency_ms=latency_ms,
         cost_usd=cost_usd,
+        prompt_tokens=extraction.prompt_tokens,
+        completion_tokens=extraction.completion_tokens,
+        extractor_error=extraction.error,
     )
 
 
@@ -307,6 +317,9 @@ def compute_metrics(outcomes: tuple[SampleOutcome, ...]) -> Metrics:
         latency_p95_ms=_percentile(latencies, 0.95),
         total_cost_usd=sum(costs, Decimal("0")) if costs else Decimal("0"),
         mean_cost_usd=(sum(costs, Decimal("0")) / len(costs)) if costs else Decimal("0"),
+        prompt_tokens=sum(o.prompt_tokens for o in outcomes),
+        completion_tokens=sum(o.completion_tokens for o in outcomes),
+        extractor_errors=sum(1 for o in outcomes if o.extractor_error),
     )
 
 

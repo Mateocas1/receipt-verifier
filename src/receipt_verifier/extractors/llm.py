@@ -17,7 +17,8 @@ from __future__ import annotations
 import base64
 import json
 import re
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Final, Protocol
@@ -27,11 +28,18 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from receipt_verifier.confidence import SourceQuality, score_extraction
 from receipt_verifier.extraction import ExtractionResult
+from receipt_verifier.ratelimit import RequestLimiter, retry_after_seconds
 
 LLM_EXTRACTOR_NAME: Final = "llm"
 DEFAULT_BASE_URL: Final = "https://api.nan.builders/v1"
 DEFAULT_TIMEOUT_SECONDS: Final = 30.0
 DEFAULT_MAX_RETRIES: Final = 1
+DEFAULT_MAX_RATE_LIMIT_RETRIES: Final = 8
+DEFAULT_MAX_TRANSIENT_RETRIES: Final = 3
+TRANSIENT_RETRY_BASE_SECONDS: Final = 1.0
+TRANSIENT_STATUS_CODES: Final[frozenset[int]] = frozenset({502, 503, 504})
+"""Gateway/provider hiccups worth retrying; a 429 is handled separately."""
+DEFAULT_RATE_LIMIT_WAIT_SECONDS: Final = 5.0
 DEFAULT_SOURCE_QUALITY: Final = 0.85
 
 SYSTEM_PROMPT: Final = """\
@@ -65,6 +73,19 @@ class LlmChoiceMessage(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     content: str | None = None
+    reasoning_content: str | None = None
+
+    @property
+    def text(self) -> str:
+        """The assistant's answer, tolerating models that emit only reasoning.
+
+        Some OpenAI-compatible reasoning models return ``content: null`` and put the
+        whole answer in ``reasoning_content``; ignoring that would look like an empty
+        answer and be misreported as a broken extractor.
+        """
+        if self.content and self.content.strip():
+            return self.content
+        return self.reasoning_content or ""
 
 
 class LlmChoice(BaseModel):
@@ -95,6 +116,10 @@ class LlmResponseError(RuntimeError):
 
 class LlmTransportError(RuntimeError):
     """The provider could not be reached or timed out."""
+
+
+class LlmRateLimitError(LlmTransportError):
+    """The provider kept answering 429 after every bounded retry."""
 
 
 class LlmDestination(BaseModel):
@@ -196,11 +221,32 @@ class LlmConfig:
 
 
 class HttpLlmTransport:
-    """OpenAI-compatible ``/chat/completions`` client backed by httpx."""
+    """OpenAI-compatible ``/chat/completions`` client backed by httpx.
 
-    def __init__(self, config: LlmConfig, *, client: httpx.Client | None = None) -> None:
+    A ``429`` is a pacing problem, not an extractor failure: the call is retried after
+    the wait the provider asks for (``Retry-After`` or a reset header), bounded by
+    ``max_rate_limit_retries``. An optional :class:`RequestLimiter` keeps a rolling
+    per-minute budget so the run never bursts the shared key in the first place.
+    """
+
+    def __init__(
+        self,
+        config: LlmConfig,
+        *,
+        client: httpx.Client | None = None,
+        limiter: RequestLimiter | None = None,
+        max_rate_limit_retries: int = DEFAULT_MAX_RATE_LIMIT_RETRIES,
+        max_transient_retries: int = DEFAULT_MAX_TRANSIENT_RETRIES,
+        sleep: Callable[[float], None] | None = None,
+    ) -> None:
         self._config = config
         self._client: httpx.Client | None = client
+        self._limiter = limiter
+        self._max_rate_limit_retries = max(0, max_rate_limit_retries)
+        self._max_transient_retries = max(0, max_transient_retries)
+        self._sleep = sleep or time.sleep
+        self._rate_limit_waits = 0.0
+        self._transient_waits = 0.0
 
     def _http(self) -> httpx.Client:
         client = self._client
@@ -208,6 +254,67 @@ class HttpLlmTransport:
             client = build_http_client(self._config)
             self._client = client
         return client
+
+    def rate_limit_waits_seconds(self) -> float:
+        """Total time this transport spent waiting out ``429`` answers."""
+        return self._rate_limit_waits
+
+    def transient_waits_seconds(self) -> float:
+        """Total time this transport spent backing off transient ``5xx`` answers."""
+        return self._transient_waits
+
+    @property
+    def limiter(self) -> RequestLimiter | None:
+        """The pacing limiter shared by the stages built from one configuration."""
+        return self._limiter
+
+    def _post(self, payload: dict[str, object], timeout_seconds: float) -> object:
+        attempts = 0
+        transient = 0
+        while True:
+            if self._limiter is not None:
+                self._limiter.acquire()
+            try:
+                response = self._http().post(
+                    "/chat/completions", json=payload, timeout=timeout_seconds
+                )
+            except Exception as exc:  # transport-level failure: the cascade moves on
+                raise LlmTransportError(str(exc)) from exc
+            if response.status_code == 429:
+                wait = retry_after_seconds(response.headers)
+                if wait is None:
+                    wait = (
+                        self._limiter.seconds_until_slot()
+                        if self._limiter is not None
+                        else DEFAULT_RATE_LIMIT_WAIT_SECONDS
+                    )
+                if attempts >= self._max_rate_limit_retries:
+                    raise LlmRateLimitError(
+                        "provider kept rate limiting after "
+                        f"{self._max_rate_limit_retries} retries "
+                        f"({self._rate_limit_waits:.1f}s waited)"
+                    )
+                attempts += 1
+                self._rate_limit_waits += wait
+                self._sleep(wait)
+                continue
+            if response.status_code in TRANSIENT_STATUS_CODES:
+                if transient >= self._max_transient_retries:
+                    raise LlmTransportError(_error_message(response.status_code, response.text))
+                wait = retry_after_seconds(response.headers)
+                if wait is None:
+                    wait = TRANSIENT_RETRY_BASE_SECONDS * float(2**transient)
+                transient += 1
+                self._transient_waits += wait
+                self._sleep(wait)
+                continue
+            try:
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                raise LlmTransportError(_status_error_message(exc)) from exc
+            except Exception as exc:  # transport-level failure: the cascade moves on
+                raise LlmTransportError(str(exc)) from exc
 
     def complete(
         self,
@@ -239,20 +346,15 @@ class HttpLlmTransport:
         }
         if self._config.json_mode:
             payload["response_format"] = {"type": "json_object"}
-        try:
-            response = self._http().post("/chat/completions", json=payload, timeout=timeout_seconds)
-            response.raise_for_status()
-            raw_body = response.json()
-        except Exception as exc:  # transport-level failure: the cascade must move on
-            raise LlmTransportError(str(exc)) from exc
+        raw_body = self._post(payload, timeout_seconds)
         try:
             body = LlmResponse.model_validate(raw_body)
-            message = body.choices[0].message.content
+            message = body.choices[0].message.text
         except (ValidationError, IndexError) as exc:
             raise LlmResponseError(f"unexpected provider payload: {exc}") from exc
         usage = body.usage or LlmUsage()
         return LlmCompletion(
-            text=message or "",
+            text=message,
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
         )
@@ -266,6 +368,19 @@ def build_http_client(config: LlmConfig) -> httpx.Client:
         timeout=config.timeout_seconds,
     )
     return client
+
+
+_STATUS_BODY_LIMIT: Final = 400
+
+
+def _error_message(status: int, text: str) -> str:
+    """A transport error that keeps the provider's explanation (never the key)."""
+    body = text.strip().replace("\n", " ")[:_STATUS_BODY_LIMIT]
+    return f"HTTP {status}: {body}" if body else f"HTTP {status}"
+
+
+def _status_error_message(exc: httpx.HTTPStatusError) -> str:
+    return _error_message(exc.response.status_code, exc.response.text)
 
 
 def parse_payload(text: str) -> LlmReceiptPayload:
@@ -329,12 +444,19 @@ class VisionLlmExtractor:
     def model(self) -> str:
         return self._model
 
+    @property
+    def transport(self) -> LlmTransport:
+        """The provider client this extractor calls (inspectable for pacing stats)."""
+        return self._transport
+
     def extract(self, image: bytes) -> ExtractionResult:
         image_base64 = base64.b64encode(image).decode("ascii")
         media_type = media_type_of(image)
         prompt = "Extract the fields from this receipt image. Reply with JSON only."
         last_error: LlmResponseError | None = None
         cost = Decimal("0")
+        prompt_tokens = 0
+        completion_tokens = 0
         for _ in range(self._max_retries + 1):
             completion = self._transport.complete(
                 model=self._model,
@@ -345,6 +467,8 @@ class VisionLlmExtractor:
                 timeout_seconds=self._timeout,
             )
             cost += self._prices.cost(completion)
+            prompt_tokens += completion.prompt_tokens
+            completion_tokens += completion.completion_tokens
             try:
                 payload = parse_payload(completion.text)
             except LlmResponseError as exc:
@@ -357,6 +481,8 @@ class VisionLlmExtractor:
                 raw_text=completion.text,
                 source_quality=self._quality,
                 cost_usd=cost,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
             )
         raise last_error or LlmResponseError("model answer could not be parsed")
 
@@ -367,11 +493,16 @@ class VisionLlmExtractor:
 
 __all__ = [
     "DEFAULT_BASE_URL",
+    "DEFAULT_MAX_RATE_LIMIT_RETRIES",
     "DEFAULT_MAX_RETRIES",
+    "DEFAULT_MAX_TRANSIENT_RETRIES",
+    "DEFAULT_RATE_LIMIT_WAIT_SECONDS",
     "DEFAULT_TIMEOUT_SECONDS",
     "LLM_EXTRACTOR_NAME",
     "RETRY_PROMPT",
     "SYSTEM_PROMPT",
+    "TRANSIENT_RETRY_BASE_SECONDS",
+    "TRANSIENT_STATUS_CODES",
     "HttpLlmTransport",
     "LlmChoice",
     "LlmChoiceMessage",
@@ -379,6 +510,7 @@ __all__ = [
     "LlmConfig",
     "LlmDestination",
     "LlmPrices",
+    "LlmRateLimitError",
     "LlmReceiptPayload",
     "LlmResponse",
     "LlmResponseError",
